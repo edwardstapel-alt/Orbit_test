@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { View } from '../types';
+import { getCurrentUser } from '../utils/firebaseAuth';
 
 interface GeneralSettingsProps {
   onBack: () => void;
@@ -9,7 +10,14 @@ interface GeneralSettingsProps {
 
 export const GeneralSettings: React.FC<GeneralSettingsProps> = ({ onBack, onNavigate }) => {
   const [showThemePicker, setShowThemePicker] = useState(false);
+  const [isFirebaseLoggedIn, setIsFirebaseLoggedIn] = useState(false);
   const { accentColor, setAccentColor, userProfile, darkMode, setDarkMode, showCategory, setShowCategory } = useData();
+  
+  // Check Firebase auth status
+  useEffect(() => {
+    const user = getCurrentUser();
+    setIsFirebaseLoggedIn(!!user);
+  }, []);
   
   // Uniform color palette used throughout the app
   const predefinedColors = [
@@ -37,7 +45,7 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({ onBack, onNavi
 
   return (
     <div className="flex flex-col w-full h-full bg-background min-h-screen pb-24 overflow-y-auto">
-      <header className="sticky top-0 z-20 bg-background/95 backdrop-blur-md px-6 py-4 flex items-center gap-4 border-b border-slate-200/50">
+      <header className="sticky z-20 bg-background/95 backdrop-blur-md px-6 py-4 flex items-center gap-4 border-b border-slate-200/50" style={{ top: '50px' }}>
         <button onClick={onBack} className="size-10 -ml-2 flex items-center justify-center rounded-full hover:bg-slate-200 transition-colors text-text-main">
             <span className="material-symbols-outlined">arrow_back</span>
         </button>
@@ -159,7 +167,17 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({ onBack, onNavi
           <button onClick={() => onNavigate(View.FIREBASE_AUTH)} className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors border-b border-gray-100">
             <div className="flex items-center gap-3">
               <span className="material-symbols-outlined text-text-secondary">cloud_sync</span>
-              <span className="text-text-main font-medium">Cloud Sync</span>
+              <div className="flex flex-col">
+                <span className="text-text-main font-medium">Cloud Sync</span>
+                {isFirebaseLoggedIn ? (
+                  <span className="text-xs text-green-600 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-xs">check_circle</span>
+                    Syncing
+                  </span>
+                ) : (
+                  <span className="text-xs text-gray-400">Not connected</span>
+                )}
+              </div>
             </div>
             <span className="material-symbols-outlined text-text-tertiary">chevron_right</span>
           </button>

@@ -341,7 +341,15 @@ export default function App() {
   return (
     <DataProvider>
         <div className="flex justify-center min-h-screen bg-background md:bg-gray-100">
-        <div className="w-full md:max-w-[1280px] h-screen bg-background relative md:shadow-2xl overflow-hidden flex flex-col">
+        <div 
+          className="w-full md:max-w-[1280px] h-screen bg-background relative md:shadow-2xl overflow-hidden flex flex-col"
+          style={{
+            paddingTop: '50px',
+            paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+            paddingLeft: 'env(safe-area-inset-left, 0px)',
+            paddingRight: 'env(safe-area-inset-right, 0px)'
+          }}
+        >
             <div 
               key={currentView} 
               className="flex-1 overflow-y-auto"

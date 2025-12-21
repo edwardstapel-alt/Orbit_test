@@ -31,7 +31,7 @@ export const FriendDetail: React.FC<FriendDetailProps> = ({ friend, onBack }) =>
 
   return (
     <div className="w-full max-w-md bg-background h-full min-h-screen relative overflow-x-hidden flex flex-col pb-8">
-      <div className="sticky top-0 z-50 flex items-center bg-background/90 backdrop-blur-md p-4 justify-between transition-all duration-300">
+      <div className="sticky z-50 flex items-center bg-background/90 backdrop-blur-md p-4 justify-between transition-all duration-300" style={{ top: '50px' }}>
         <button onClick={onBack} className="text-text-main flex size-10 shrink-0 items-center justify-center rounded-full hover:bg-black/5 transition-colors">
           <span className="material-symbols-outlined" style={{fontSize: '20px'}}>arrow_back_ios_new</span>
         </button>

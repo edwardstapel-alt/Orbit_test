@@ -29,7 +29,7 @@ export const PersonalSettings: React.FC<PersonalSettingsProps> = ({ onBack }) =>
 
   return (
     <div className="flex flex-col w-full h-full bg-background min-h-screen">
-       <header className="sticky top-0 z-20 bg-background/95 backdrop-blur-md px-6 py-4 flex items-center justify-between border-b border-slate-200/50">
+       <header className="sticky z-20 bg-background/95 backdrop-blur-md px-6 py-4 flex items-center justify-between border-b border-slate-200/50" style={{ top: '50px' }}>
         <div className="flex items-center gap-4">
             <button onClick={onBack} className="size-10 -ml-2 flex items-center justify-center rounded-full hover:bg-slate-200 transition-colors text-text-main">
                 <span className="material-symbols-outlined">arrow_back</span>

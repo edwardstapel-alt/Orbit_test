@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
-import { registerUser, loginUser, loginWithGoogle, getCurrentUser } from '../utils/firebaseAuth';
+import { registerUser, loginUser, loginWithGoogle, getCurrentUser, onAuthStateChange } from '../utils/firebaseAuth';
 import { syncAllToFirebase, syncAllFromFirebase } from '../utils/firebaseSync';
 import { TopNav } from '../components/TopNav';
 
@@ -32,7 +32,7 @@ export const FirebaseAuth: React.FC<FirebaseAuthProps> = ({ onBack, onAuthentica
     updateUserProfile
   } = useData();
 
-  // Check if user is already authenticated
+  // Check if user is already authenticated and watch for changes
   useEffect(() => {
     const user = getCurrentUser();
     if (user) {
@@ -41,6 +41,17 @@ export const FirebaseAuth: React.FC<FirebaseAuthProps> = ({ onBack, onAuthentica
         onAuthenticated();
       }
     }
+
+    // Watch for auth state changes (e.g., login from another device)
+    const unsubscribe = onAuthStateChange((user) => {
+      if (user) {
+        setIsAuthenticated(true);
+      } else {
+        setIsAuthenticated(false);
+      }
+    });
+
+    return () => unsubscribe();
   }, [onAuthenticated]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -131,9 +142,14 @@ export const FirebaseAuth: React.FC<FirebaseAuthProps> = ({ onBack, onAuthentica
         setIsAuthenticated(true);
         
         // Sync data from Firebase
-        const syncResult = await syncAllFromFirebase();
-        if (syncResult.success) {
-          setSuccess('Logged in and data synced!');
+        try {
+          const syncResult = await syncAllFromFirebase();
+          if (syncResult.success) {
+            setSuccess('Logged in and data synced!');
+          }
+        } catch (syncError) {
+          console.error('Sync error:', syncError);
+          // Don't fail login if sync fails
         }
         
         if (onAuthenticated) {
@@ -143,7 +159,8 @@ export const FirebaseAuth: React.FC<FirebaseAuthProps> = ({ onBack, onAuthentica
         setError(result.error || 'Google login failed');
       }
     } catch (error: any) {
-      setError(error.message || 'An error occurred');
+      console.error('Google login exception:', error);
+      setError(error.message || 'An unexpected error occurred during Google login');
     } finally {
       setLoading(false);
     }

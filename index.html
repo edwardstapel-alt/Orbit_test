@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="description" content="Personal life management and goal tracking" />
     <meta name="theme-color" content="#D95829" />
     <link rel="manifest" href="/manifest.json" />
@@ -85,6 +85,11 @@
         background-color: var(--bg-background);
         color: var(--text-main);
         transition: background-color 0.3s ease, color 0.3s ease;
+        /* Fixed top margin for Android devices */
+        padding-top: 50px;
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+        padding-left: env(safe-area-inset-left, 0px);
+        padding-right: env(safe-area-inset-right, 0px);
         /* Hide scrollbar for Chrome, Safari and Opera */
         -ms-overflow-style: none;  /* IE and Edge */
         scrollbar-width: none;  /* Firefox */

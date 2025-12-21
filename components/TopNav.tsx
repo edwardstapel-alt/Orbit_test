@@ -16,7 +16,13 @@ export const TopNav: React.FC<TopNavProps> = ({ title, subtitle, onProfileClick,
   const { userProfile } = useData();
   
   return (
-    <header className="sticky top-0 z-30 bg-background/95 backdrop-blur-md px-6 md:px-12 lg:px-16 pt-6 pb-2 flex items-center justify-between transition-all duration-300 border-b border-transparent">
+    <header 
+      className="sticky z-30 bg-background/95 backdrop-blur-md px-6 md:px-12 lg:px-16 pb-2 flex items-center justify-between transition-all duration-300 border-b border-transparent"
+      style={{
+        top: '50px',
+        paddingTop: '1.5rem'
+      }}
+    >
       {showBack && onBack ? (
         <button 
           className="flex items-center justify-center p-2 -ml-2 text-text-main rounded-full hover:bg-black/5 transition-colors"

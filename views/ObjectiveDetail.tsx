@@ -80,7 +80,7 @@ export const ObjectiveDetail: React.FC<ObjectiveDetailProps> = ({ objectiveId, o
   return (
     <div className="flex flex-col w-full h-full bg-background min-h-screen relative">
        {/* Header */}
-      <div className="sticky top-0 z-30 flex items-center bg-background/95 backdrop-blur-md p-4 justify-between border-b border-slate-200/50">
+      <div className="sticky z-30 flex items-center bg-background/95 backdrop-blur-md p-4 justify-between border-b border-slate-200/50" style={{ top: '50px' }}>
         <button onClick={onBack} className="text-text-main flex size-10 shrink-0 items-center justify-center rounded-full hover:bg-black/5 transition-colors">
           <span className="material-symbols-outlined">arrow_back</span>
         </button>

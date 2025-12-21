@@ -60,16 +60,32 @@ export const loginUser = async (
 export const loginWithGoogle = async (): Promise<{ success: boolean; user?: User; error?: string }> => {
   try {
     const provider = new GoogleAuthProvider();
+    // Add additional scopes if needed
+    provider.addScope('profile');
+    provider.addScope('email');
     const userCredential = await signInWithPopup(auth, provider);
     return { success: true, user: userCredential.user };
   } catch (error: any) {
     console.error('Google login error:', error);
     let errorMessage = 'Google login failed';
+    
+    // Handle specific error codes
     if (error.code === 'auth/popup-closed-by-user') {
-      errorMessage = 'Login popup was closed';
+      errorMessage = 'Login popup was closed. Please try again.';
     } else if (error.code === 'auth/cancelled-popup-request') {
-      errorMessage = 'Login was cancelled';
+      errorMessage = 'Login was cancelled. Please try again.';
+    } else if (error.code === 'auth/popup-blocked') {
+      errorMessage = 'Popup was blocked by your browser. Please allow popups for this site.';
+    } else if (error.code === 'auth/operation-not-allowed') {
+      errorMessage = 'Google login is not enabled. Please enable it in Firebase Console.';
+    } else if (error.code === 'auth/unauthorized-domain') {
+      errorMessage = 'This domain is not authorized. Please add it in Firebase Console.';
+    } else if (error.code === 'auth/configuration-not-found') {
+      errorMessage = 'Google provider is not configured. Please configure it in Firebase Console.';
+    } else if (error.message) {
+      errorMessage = `Google login error: ${error.message}`;
     }
+    
     return { success: false, error: errorMessage };
   }
 };
