@@ -346,3 +346,96 @@ export const deleteEntityFromFirebase = async (
   }
 };
 
+// Delete all entities from a Firebase collection
+export const deleteAllFromFirebaseCollection = async (
+  collectionName: string
+): Promise<{ success: boolean; deleted: number; error?: string }> => {
+  try {
+    const userId = getUserId();
+    if (!userId) {
+      return { success: false, deleted: 0, error: 'User not authenticated' };
+    }
+
+    const collectionRef = collection(db, getUserCollection(collectionName));
+    const snapshot = await getDocs(collectionRef);
+    
+    if (snapshot.empty) {
+      return { success: true, deleted: 0 };
+    }
+
+    // Use batch delete (max 500 operations per batch)
+    const batch = writeBatch(db);
+    let deleted = 0;
+    const batches: typeof batch[] = [writeBatch(db)];
+
+    snapshot.docs.forEach((docSnapshot, index) => {
+      const currentBatch = batches[batches.length - 1];
+      currentBatch.delete(docSnapshot.ref);
+      deleted++;
+
+      // Firestore allows max 500 operations per batch
+      if ((index + 1) % 500 === 0 && index + 1 < snapshot.docs.length) {
+        batches.push(writeBatch(db));
+      }
+    });
+
+    // Commit all batches
+    await Promise.all(batches.map(b => b.commit()));
+
+    return { success: true, deleted };
+  } catch (error: any) {
+    console.error(`Error deleting all from ${collectionName}:`, error);
+    return { success: false, deleted: 0, error: error.message };
+  }
+};
+
+// Delete all user data from Firebase
+export const deleteAllUserDataFromFirebase = async (): Promise<{
+  success: boolean;
+  deleted: { [key: string]: number };
+  errors: { [key: string]: string };
+}> => {
+  const deleted: { [key: string]: number } = {};
+  const errors: { [key: string]: string } = {};
+
+  const collections = [
+    'tasks',
+    'habits',
+    'objectives',
+    'keyResults',
+    'lifeAreas',
+    'timeSlots',
+    'friends',
+    'statusUpdates',
+  ];
+
+  // Delete all collections
+  for (const collectionName of collections) {
+    const result = await deleteAllFromFirebaseCollection(collectionName);
+    if (result.success) {
+      deleted[collectionName] = result.deleted;
+    } else {
+      errors[collectionName] = result.error || 'Unknown error';
+    }
+  }
+
+  // Delete user profile
+  const userId = getUserId();
+  if (userId) {
+    try {
+      const profileRef = doc(db, `users/${userId}/profile`, 'data');
+      const profileSnap = await getDoc(profileRef);
+      if (profileSnap.exists()) {
+        await deleteDoc(profileRef);
+        deleted['profile'] = 1;
+      } else {
+        deleted['profile'] = 0;
+      }
+    } catch (error: any) {
+      errors['profile'] = error.message;
+    }
+  }
+
+  return { success: Object.keys(errors).length === 0, deleted, errors };
+};
+

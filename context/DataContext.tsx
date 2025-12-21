@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { Task, Habit, Friend, Objective, KeyResult, Place, TeamMember, DataContextType, UserProfile, LifeArea, Vision, TimeSlot, DayPart, StatusUpdate } from '../types';
 import { syncService } from '../utils/syncService';
 import { isAuthenticated, onAuthStateChange } from '../utils/firebaseAuth';
-import { syncEntityToFirebase, syncAllFromFirebase, syncAllToFirebase, watchFirebaseChanges, deleteEntityFromFirebase } from '../utils/firebaseSync';
+import { syncEntityToFirebase, syncAllFromFirebase, syncAllToFirebase, watchFirebaseChanges, deleteEntityFromFirebase, deleteAllUserDataFromFirebase } from '../utils/firebaseSync';
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
@@ -147,6 +147,8 @@ const defaultDayParts: DayPart[] = [
 ];
 
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  // Flag to prevent Firebase listeners from restoring data after clear
+  const [isClearingData, setIsClearingData] = useState(false);
   // Helper to load from LocalStorage or fallback to default
   const loadData = <T,>(key: string, fallback: T): T => {
     try {
@@ -428,48 +430,57 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         };
 
         unsubscribers.push(watchFirebaseChanges('tasks', (firebaseTasks) => {
+          // Don't restore data if we're in the middle of clearing
+          if (isClearingData) return;
           if (firebaseTasks.length > 0) {
             setTasks(prev => mergeArrays(prev, firebaseTasks));
           }
         }));
 
         unsubscribers.push(watchFirebaseChanges('objectives', (firebaseObjectives) => {
+          if (isClearingData) return;
           if (firebaseObjectives.length > 0) {
             setObjectives(prev => mergeArrays(prev, firebaseObjectives));
           }
         }));
 
         unsubscribers.push(watchFirebaseChanges('keyResults', (firebaseKeyResults) => {
+          if (isClearingData) return;
           if (firebaseKeyResults.length > 0) {
             setKeyResults(prev => mergeArrays(prev, firebaseKeyResults));
           }
         }));
 
         unsubscribers.push(watchFirebaseChanges('timeSlots', (firebaseTimeSlots) => {
+          if (isClearingData) return;
           if (firebaseTimeSlots.length > 0) {
             setTimeSlots(prev => mergeArrays(prev, firebaseTimeSlots));
           }
         }));
 
         unsubscribers.push(watchFirebaseChanges('habits', (firebaseHabits) => {
+          if (isClearingData) return;
           if (firebaseHabits.length > 0) {
             setHabits(prev => mergeArrays(prev, firebaseHabits));
           }
         }));
 
         unsubscribers.push(watchFirebaseChanges('lifeAreas', (firebaseLifeAreas) => {
+          if (isClearingData) return;
           if (firebaseLifeAreas.length > 0) {
             setLifeAreas(prev => mergeArrays(prev, firebaseLifeAreas));
           }
         }));
 
         unsubscribers.push(watchFirebaseChanges('friends', (firebaseFriends) => {
+          if (isClearingData) return;
           if (firebaseFriends.length > 0) {
             setFriends(prev => mergeArrays(prev, firebaseFriends));
           }
         }));
 
         unsubscribers.push(watchFirebaseChanges('statusUpdates', (firebaseStatusUpdates) => {
+          if (isClearingData) return;
           if (firebaseStatusUpdates.length > 0) {
             setStatusUpdates(prev => mergeArrays(prev, firebaseStatusUpdates));
           }
@@ -994,7 +1005,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return formatted;
   };
 
-  const clearAllData = () => {
+  const clearAllData = async () => {
+    // Set flag to prevent Firebase listeners from restoring data
+    setIsClearingData(true);
+    
+    // Clear all state
     setTasks([]);
     setHabits([]);
     setFriends([]);
@@ -1007,6 +1022,45 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setTimeSlots([]);
     setStatusUpdates([]);
     // Keep dayParts as they are defaults
+    
+    // Clear all localStorage keys
+    const localStorageKeys = [
+      'orbit_profile',
+      'orbit_tasks',
+      'orbit_habits',
+      'orbit_friends',
+      'orbit_objectives',
+      'orbit_keyResults',
+      'orbit_places',
+      'orbit_teamMembers',
+      'orbit_lifeAreas',
+      'orbit_visions',
+      'orbit_timeSlots',
+      'orbit_statusUpdates',
+      'orbit_dayParts',
+      'orbit_accent',
+      'orbit_darkMode',
+      'orbit_showCategory',
+    ];
+    
+    localStorageKeys.forEach(key => {
+      localStorage.removeItem(key);
+    });
+    
+    // Delete all Firebase data if authenticated
+    if (isAuthenticated()) {
+      try {
+        await deleteAllUserDataFromFirebase();
+        console.log('All Firebase data deleted');
+      } catch (error) {
+        console.error('Error deleting Firebase data:', error);
+      }
+    }
+    
+    // Wait a bit before allowing listeners to restore data (in case of race conditions)
+    setTimeout(() => {
+      setIsClearingData(false);
+    }, 2000);
   };
 
   const restoreExampleData = () => {

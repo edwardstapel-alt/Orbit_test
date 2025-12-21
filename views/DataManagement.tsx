@@ -120,7 +120,7 @@ export const DataManagement: React.FC<DataManagementProps> = ({ onBack }) => {
       setImportStatus('Importing data...');
       
       // Clear existing data first
-      clearAllData();
+      await clearAllData();
 
       // Import all data
       const data = dataToImport;
@@ -218,9 +218,9 @@ export const DataManagement: React.FC<DataManagementProps> = ({ onBack }) => {
       alert("Cloud backup created successfully.");
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
       if(confirm("Are you sure you want to reset all data? This cannot be undone.")) {
-          clearAllData();
+          await clearAllData();
           alert("All data has been reset.");
       }
   };

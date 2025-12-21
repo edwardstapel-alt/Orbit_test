@@ -18,9 +18,9 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack, onNavi
     alert(`Navigating to ${item}...`);
   };
 
-  const handleUnlink = () => {
+  const handleUnlink = async () => {
       if(window.confirm("This will clear all current data from the dashboard. Are you sure?")) {
-          clearAllData();
+          await clearAllData();
           onBack(); // Navigate back to dashboard to see empty state
       }
   }

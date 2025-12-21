@@ -323,7 +323,7 @@ export interface DataContextType {
   setDarkMode: (enabled: boolean) => void;
   setShowCategory: (enabled: boolean) => void;
 
-  clearAllData: () => void;
+  clearAllData: () => Promise<void>;
   restoreExampleData: () => void;
   
   // Sync service functions
