@@ -24,6 +24,7 @@ import { DayPartsSettings } from './views/DayPartsSettings';
 import { Calendar } from './views/Calendar';
 import { UnifiedSearch } from './components/UnifiedSearch';
 import { Statistics } from './views/Statistics';
+import { FirebaseAuth } from './views/FirebaseAuth';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<View>(View.DASHBOARD);
@@ -226,6 +227,8 @@ export default function App() {
         return <TeamSettings onBack={navigateBackToSettings} />;
       case View.DATA_MANAGEMENT:
         return <DataManagement onBack={navigateBackToSettings} />;
+      case View.FIREBASE_AUTH:
+        return <FirebaseAuth onBack={navigateBackToSettings} onAuthenticated={() => navigateBackToSettings()} />;
       case View.DAY_PARTS_SETTINGS:
         return <DayPartsSettings onBack={navigateBackToSettings} onNavigate={navigateTo} />;
       case View.NOTIFICATIONS:
@@ -332,7 +335,8 @@ export default function App() {
     currentView !== View.OBJECTIVE_DETAIL &&
     currentView !== View.MAP &&
     currentView !== View.EDITOR &&
-    currentView !== View.RELATIONSHIPS; 
+    currentView !== View.RELATIONSHIPS &&
+    currentView !== View.FIREBASE_AUTH; 
 
   return (
     <DataProvider>

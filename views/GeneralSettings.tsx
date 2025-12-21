@@ -156,6 +156,13 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({ onBack, onNavi
 
         {/* Additional Settings */}
         <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+          <button onClick={() => onNavigate(View.FIREBASE_AUTH)} className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors border-b border-gray-100">
+            <div className="flex items-center gap-3">
+              <span className="material-symbols-outlined text-text-secondary">cloud_sync</span>
+              <span className="text-text-main font-medium">Cloud Sync</span>
+            </div>
+            <span className="material-symbols-outlined text-text-tertiary">chevron_right</span>
+          </button>
           <button onClick={() => onNavigate(View.SYNCED_ACCOUNTS)} className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors border-b border-gray-100">
             <div className="flex items-center gap-3">
               <span className="material-symbols-outlined text-text-secondary">sync_alt</span>

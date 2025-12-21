@@ -20,7 +20,8 @@ export enum View {
   GOAL_TIMELINE = 'GOAL_TIMELINE', // Goal Timeline (Gantt)
   TODAY = 'TODAY', // Enhanced Today view
   DAY_PARTS_SETTINGS = 'DAY_PARTS_SETTINGS', // Day Parts Configuration
-  STATISTICS = 'STATISTICS' // Statistics Dashboard
+  STATISTICS = 'STATISTICS', // Statistics Dashboard
+  FIREBASE_AUTH = 'FIREBASE_AUTH' // Firebase Authentication
 }
 
 export type EntityType = 'task' | 'habit' | 'friend' | 'objective' | 'keyResult' | 'place' | 'lifeArea' | 'vision' | 'timeSlot';

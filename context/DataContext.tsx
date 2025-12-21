@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Task, Habit, Friend, Objective, KeyResult, Place, TeamMember, DataContextType, UserProfile, LifeArea, Vision, TimeSlot, DayPart, StatusUpdate } from '../types';
 import { syncService } from '../utils/syncService';
+import { isAuthenticated, onAuthStateChange } from '../utils/firebaseAuth';
+import { syncEntityToFirebase, syncAllFromFirebase, syncAllToFirebase, watchFirebaseChanges } from '../utils/firebaseSync';
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
@@ -336,6 +338,119 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
   }, [userProfile.firstName, userProfile.lastName, userProfile.image]);
 
+  // Firebase Sync: Initial sync and auth state watching
+  useEffect(() => {
+    const unsubscribe = onAuthStateChange(async (user) => {
+      if (user) {
+        console.log('User authenticated, syncing from Firebase...');
+        try {
+          // Initial sync from Firebase
+          const syncResult = await syncAllFromFirebase();
+          if (syncResult.success && syncResult.data) {
+            // Check if Firebase has data
+            const hasFirebaseData = Object.values(syncResult.data).some(
+              (arr: any) => Array.isArray(arr) && arr.length > 0
+            ) || syncResult.data.userProfile !== null;
+
+            if (hasFirebaseData) {
+              // Merge strategy: use Firebase data if it exists
+              if (syncResult.data.tasks.length > 0) setTasks(syncResult.data.tasks);
+              if (syncResult.data.habits.length > 0) setHabits(syncResult.data.habits);
+              if (syncResult.data.objectives.length > 0) setObjectives(syncResult.data.objectives);
+              if (syncResult.data.keyResults.length > 0) setKeyResults(syncResult.data.keyResults);
+              if (syncResult.data.lifeAreas.length > 0) setLifeAreas(syncResult.data.lifeAreas);
+              if (syncResult.data.timeSlots.length > 0) setTimeSlots(syncResult.data.timeSlots);
+              if (syncResult.data.friends.length > 0) setFriends(syncResult.data.friends);
+              if (syncResult.data.statusUpdates.length > 0) setStatusUpdates(syncResult.data.statusUpdates);
+              if (syncResult.data.userProfile) {
+                updateUserProfile(syncResult.data.userProfile);
+              }
+            } else {
+              // No Firebase data, upload local data
+              console.log('No Firebase data found, uploading local data...');
+              await syncAllToFirebase({
+                tasks,
+                habits,
+                objectives,
+                keyResults,
+                lifeAreas,
+                timeSlots,
+                friends,
+                statusUpdates,
+                userProfile
+              });
+            }
+          }
+        } catch (error) {
+          console.error('Error syncing from Firebase:', error);
+        }
+
+        // Set up real-time listeners for each collection
+        const unsubscribers: (() => void)[] = [];
+
+        // Watch for changes in Firebase (only update if Firebase has data)
+        unsubscribers.push(watchFirebaseChanges('tasks', (firebaseTasks) => {
+          if (firebaseTasks.length > 0) {
+            setTasks(firebaseTasks);
+          }
+        }));
+
+        unsubscribers.push(watchFirebaseChanges('objectives', (firebaseObjectives) => {
+          if (firebaseObjectives.length > 0) {
+            setObjectives(firebaseObjectives);
+          }
+        }));
+
+        unsubscribers.push(watchFirebaseChanges('keyResults', (firebaseKeyResults) => {
+          if (firebaseKeyResults.length > 0) {
+            setKeyResults(firebaseKeyResults);
+          }
+        }));
+
+        unsubscribers.push(watchFirebaseChanges('timeSlots', (firebaseTimeSlots) => {
+          if (firebaseTimeSlots.length > 0) {
+            setTimeSlots(firebaseTimeSlots);
+          }
+        }));
+
+        unsubscribers.push(watchFirebaseChanges('habits', (firebaseHabits) => {
+          if (firebaseHabits.length > 0) {
+            setHabits(firebaseHabits);
+          }
+        }));
+
+        unsubscribers.push(watchFirebaseChanges('lifeAreas', (firebaseLifeAreas) => {
+          if (firebaseLifeAreas.length > 0) {
+            setLifeAreas(firebaseLifeAreas);
+          }
+        }));
+
+        unsubscribers.push(watchFirebaseChanges('friends', (firebaseFriends) => {
+          if (firebaseFriends.length > 0) {
+            setFriends(firebaseFriends);
+          }
+        }));
+
+        unsubscribers.push(watchFirebaseChanges('statusUpdates', (firebaseStatusUpdates) => {
+          if (firebaseStatusUpdates.length > 0) {
+            setStatusUpdates(firebaseStatusUpdates);
+          }
+        }));
+
+        // Cleanup function
+        return () => {
+          unsubscribers.forEach(unsub => unsub());
+        };
+      } else {
+        console.log('User not authenticated');
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []); // Only run once on mount
+
   // --- Actions ---
 
   const updateUserProfile = (profile: Partial<UserProfile>) => setUserProfile(prev => ({ ...prev, ...profile }));
@@ -344,11 +459,23 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setTasks([...tasks, item]);
     // Auto-sync to Google Tasks
     syncService.queueSync('task', 'create', item.id, item);
+    // Auto-sync to Firebase (async, fire and forget)
+    if (isAuthenticated()) {
+      syncEntityToFirebase('tasks', item, item.id).catch(error => {
+        console.error('Error syncing task to Firebase:', error);
+      });
+    }
   };
   const updateTask = (item: Task) => {
     setTasks(tasks.map(t => t.id === item.id ? item : t));
     // Auto-sync to Google Tasks
     syncService.queueSync('task', 'update', item.id, item);
+    // Auto-sync to Firebase (async, fire and forget)
+    if (isAuthenticated()) {
+      syncEntityToFirebase('tasks', item, item.id).catch(error => {
+        console.error('Error syncing task to Firebase:', error);
+      });
+    }
   };
   const deleteTask = (id: string) => {
     setTasks(tasks.filter(t => t.id !== id));
@@ -356,6 +483,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const task = tasks.find(t => t.id === id);
     if (task) {
       syncService.queueSync('task', 'delete', id, null);
+    }
+    // Auto-sync delete to Firebase (async, fire and forget)
+    if (isAuthenticated()) {
+      syncEntityToFirebase('tasks', { id, deleted: true }, id).catch(error => {
+        console.error('Error deleting task from Firebase:', error);
+      });
     }
   };
 
@@ -365,19 +498,96 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         weeklyProgress: item.weeklyProgress || [false, false, false, false, false, false, false]
     };
     setHabits([...habits, newItem]);
+    // Auto-sync to Firebase
+    if (isAuthenticated()) {
+      syncEntityToFirebase('habits', newItem, newItem.id).catch(error => {
+        console.error('Error syncing habit to Firebase:', error);
+      });
+    }
   };
-  const updateHabit = (item: Habit) => setHabits(habits.map(h => h.id === item.id ? item : h));
-  const deleteHabit = (id: string) => setHabits(habits.filter(h => h.id !== id));
+  const updateHabit = (item: Habit) => {
+    setHabits(habits.map(h => h.id === item.id ? item : h));
+    // Auto-sync to Firebase
+    if (isAuthenticated()) {
+      syncEntityToFirebase('habits', item, item.id).catch(error => {
+        console.error('Error syncing habit to Firebase:', error);
+      });
+    }
+  };
+  const deleteHabit = (id: string) => {
+    setHabits(habits.filter(h => h.id !== id));
+    // Auto-sync delete to Firebase
+    if (isAuthenticated()) {
+      syncEntityToFirebase('habits', { id, deleted: true }, id).catch(error => {
+        console.error('Error deleting habit from Firebase:', error);
+      });
+    }
+  };
 
-  const addFriend = (item: Friend) => setFriends([...friends, item]);
-  const updateFriend = (item: Friend) => setFriends(friends.map(f => f.id === item.id ? item : f));
-  const deleteFriend = (id: string) => setFriends(friends.filter(f => f.id !== id));
+  const addFriend = (item: Friend) => {
+    setFriends([...friends, item]);
+    // Auto-sync to Firebase
+    if (isAuthenticated()) {
+      syncEntityToFirebase('friends', item, item.id).catch(error => {
+        console.error('Error syncing friend to Firebase:', error);
+      });
+    }
+  };
+  const updateFriend = (item: Friend) => {
+    setFriends(friends.map(f => f.id === item.id ? item : f));
+    // Auto-sync to Firebase
+    if (isAuthenticated()) {
+      syncEntityToFirebase('friends', item, item.id).catch(error => {
+        console.error('Error syncing friend to Firebase:', error);
+      });
+    }
+  };
+  const deleteFriend = (id: string) => {
+    setFriends(friends.filter(f => f.id !== id));
+    // Auto-sync delete to Firebase
+    if (isAuthenticated()) {
+      syncEntityToFirebase('friends', { id, deleted: true }, id).catch(error => {
+        console.error('Error deleting friend from Firebase:', error);
+      });
+    }
+  };
 
-  const addObjective = (item: Objective) => setObjectives([...objectives, item]);
-  const updateObjective = (item: Objective) => setObjectives(objectives.map(o => o.id === item.id ? item : o));
+  const addObjective = (item: Objective) => {
+    setObjectives([...objectives, item]);
+    // Auto-sync goal deadline to Google Calendar
+    syncService.queueSync('objective', 'create', item.id, item);
+    // Auto-sync to Firebase (async, fire and forget)
+    if (isAuthenticated()) {
+      syncEntityToFirebase('objectives', item, item.id).catch(error => {
+        console.error('Error syncing objective to Firebase:', error);
+      });
+    }
+  };
+  const updateObjective = (item: Objective) => {
+    setObjectives(objectives.map(o => o.id === item.id ? item : o));
+    // Auto-sync goal deadline to Google Calendar
+    syncService.queueSync('objective', 'update', item.id, item);
+    // Auto-sync to Firebase (async, fire and forget)
+    if (isAuthenticated()) {
+      syncEntityToFirebase('objectives', item, item.id).catch(error => {
+        console.error('Error syncing objective to Firebase:', error);
+      });
+    }
+  };
   const deleteObjective = (id: string) => {
     setObjectives(objectives.filter(o => o.id !== id));
     setKeyResults(keyResults.filter(k => k.objectiveId !== id)); 
+    // Auto-sync delete to Google Calendar
+    const objective = objectives.find(o => o.id === id);
+    if (objective) {
+      syncService.queueSync('objective', 'delete', id, null);
+    }
+    // Auto-sync delete to Firebase (async, fire and forget)
+    if (isAuthenticated()) {
+      syncEntityToFirebase('objectives', { id, deleted: true }, id).catch(error => {
+        console.error('Error deleting objective from Firebase:', error);
+      });
+    }
   };
 
   // Helper function to calculate objective progress from key results
@@ -412,12 +622,34 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const deleteTeamMember = (id: string) => setTeamMembers(teamMembers.filter(t => t.id !== id));
 
   // Life Planner actions
-  const addLifeArea = (item: LifeArea) => setLifeAreas([...lifeAreas, item]);
-  const updateLifeArea = (item: LifeArea) => setLifeAreas(lifeAreas.map(la => la.id === item.id ? item : la));
+  const addLifeArea = (item: LifeArea) => {
+    setLifeAreas([...lifeAreas, item]);
+    // Auto-sync to Firebase
+    if (isAuthenticated()) {
+      syncEntityToFirebase('lifeAreas', item, item.id).catch(error => {
+        console.error('Error syncing lifeArea to Firebase:', error);
+      });
+    }
+  };
+  const updateLifeArea = (item: LifeArea) => {
+    setLifeAreas(lifeAreas.map(la => la.id === item.id ? item : la));
+    // Auto-sync to Firebase
+    if (isAuthenticated()) {
+      syncEntityToFirebase('lifeAreas', item, item.id).catch(error => {
+        console.error('Error syncing lifeArea to Firebase:', error);
+      });
+    }
+  };
   const deleteLifeArea = (id: string) => {
     setLifeAreas(lifeAreas.filter(la => la.id !== id));
     // Also delete related visions and update objectives
     setVisions(visions.filter(v => v.lifeAreaId !== id));
+    // Auto-sync delete to Firebase
+    if (isAuthenticated()) {
+      syncEntityToFirebase('lifeAreas', { id, deleted: true }, id).catch(error => {
+        console.error('Error deleting lifeArea from Firebase:', error);
+      });
+    }
     setObjectives(objectives.map(obj => obj.lifeAreaId === id ? { ...obj, lifeAreaId: '' } : obj));
   };
   const reorderLifeAreas = (newOrder: LifeArea[]) => setLifeAreas(newOrder);
@@ -426,22 +658,46 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const updateVision = (item: Vision) => setVisions(visions.map(v => v.id === item.id ? item : v));
   const deleteVision = (id: string) => setVisions(visions.filter(v => v.id !== id));
 
-  const addTimeSlot = (item: TimeSlot) => {
+  const addTimeSlot = async (item: TimeSlot) => {
     setTimeSlots([...timeSlots, item]);
     // Auto-sync to Google Calendar
     syncService.queueSync('timeSlot', 'create', item.id, item);
+    // Auto-sync to Firebase
+    if (isAuthenticated()) {
+      try {
+        await syncEntityToFirebase('timeSlots', item, item.id);
+      } catch (error) {
+        console.error('Error syncing timeSlot to Firebase:', error);
+      }
+    }
   };
-  const updateTimeSlot = (item: TimeSlot) => {
+  const updateTimeSlot = async (item: TimeSlot) => {
     setTimeSlots(timeSlots.map(ts => ts.id === item.id ? item : ts));
     // Auto-sync to Google Calendar
     syncService.queueSync('timeSlot', 'update', item.id, item);
+    // Auto-sync to Firebase
+    if (isAuthenticated()) {
+      try {
+        await syncEntityToFirebase('timeSlots', item, item.id);
+      } catch (error) {
+        console.error('Error syncing timeSlot to Firebase:', error);
+      }
+    }
   };
-  const deleteTimeSlot = (id: string) => {
+  const deleteTimeSlot = async (id: string) => {
     setTimeSlots(timeSlots.filter(ts => ts.id !== id));
     // Auto-sync delete to Google Calendar
     const timeSlot = timeSlots.find(ts => ts.id === id);
     if (timeSlot) {
       syncService.queueSync('timeSlot', 'delete', id, null);
+    }
+    // Auto-sync delete to Firebase
+    if (isAuthenticated()) {
+      try {
+        await syncEntityToFirebase('timeSlots', { id, deleted: true }, id);
+      } catch (error) {
+        console.error('Error deleting timeSlot from Firebase:', error);
+      }
     }
   };
 
@@ -466,8 +722,24 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       updateKeyResult({ ...kr, current: update.currentValue, status: update.status });
     }
   };
-  const updateStatusUpdate = (update: StatusUpdate) => setStatusUpdates(statusUpdates.map(su => su.id === update.id ? update : su));
-  const deleteStatusUpdate = (id: string) => setStatusUpdates(statusUpdates.filter(su => su.id !== id));
+  const updateStatusUpdate = (update: StatusUpdate) => {
+    setStatusUpdates(statusUpdates.map(su => su.id === update.id ? update : su));
+    // Auto-sync to Firebase
+    if (isAuthenticated()) {
+      syncEntityToFirebase('statusUpdates', update, update.id).catch(error => {
+        console.error('Error syncing statusUpdate to Firebase:', error);
+      });
+    }
+  };
+  const deleteStatusUpdate = (id: string) => {
+    setStatusUpdates(statusUpdates.filter(su => su.id !== id));
+    // Auto-sync delete to Firebase
+    if (isAuthenticated()) {
+      syncEntityToFirebase('statusUpdates', { id, deleted: true }, id).catch(error => {
+        console.error('Error deleting statusUpdate from Firebase:', error);
+      });
+    }
+  };
   const getStatusUpdatesByKeyResult = (keyResultId: string): StatusUpdate[] => {
     return statusUpdates.filter(su => su.keyResultId === keyResultId).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   };
