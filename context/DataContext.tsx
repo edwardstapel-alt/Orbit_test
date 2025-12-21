@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { Task, Habit, Friend, Objective, KeyResult, Place, TeamMember, DataContextType, UserProfile, LifeArea, Vision, TimeSlot, DayPart, StatusUpdate } from '../types';
 import { syncService } from '../utils/syncService';
 import { isAuthenticated, onAuthStateChange } from '../utils/firebaseAuth';
-import { syncEntityToFirebase, syncAllFromFirebase, syncAllToFirebase, watchFirebaseChanges } from '../utils/firebaseSync';
+import { syncEntityToFirebase, syncAllFromFirebase, syncAllToFirebase, watchFirebaseChanges, deleteEntityFromFirebase } from '../utils/firebaseSync';
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
@@ -355,15 +355,41 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             ) || syncResult.data.userProfile !== null;
 
             if (hasFirebaseData) {
-              // Merge strategy: use Firebase data if it exists
-              if (syncResult.data.tasks.length > 0) setTasks(syncResult.data.tasks);
-              if (syncResult.data.habits.length > 0) setHabits(syncResult.data.habits);
-              if (syncResult.data.objectives.length > 0) setObjectives(syncResult.data.objectives);
-              if (syncResult.data.keyResults.length > 0) setKeyResults(syncResult.data.keyResults);
-              if (syncResult.data.lifeAreas.length > 0) setLifeAreas(syncResult.data.lifeAreas);
-              if (syncResult.data.timeSlots.length > 0) setTimeSlots(syncResult.data.timeSlots);
-              if (syncResult.data.friends.length > 0) setFriends(syncResult.data.friends);
-              if (syncResult.data.statusUpdates.length > 0) setStatusUpdates(syncResult.data.statusUpdates);
+              // Merge strategy: merge Firebase data with local data, avoiding duplicates
+              // Helper function to merge arrays by ID, keeping the most recent version
+              const mergeArrays = <T extends { id: string }>(local: T[], firebase: T[]): T[] => {
+                const merged = new Map<string, T>();
+                // First add all local items
+                local.forEach(item => merged.set(item.id, item));
+                // Then add/update with Firebase items (Firebase wins on conflict)
+                firebase.forEach(item => merged.set(item.id, item));
+                return Array.from(merged.values());
+              };
+
+              if (syncResult.data.tasks.length > 0) {
+                setTasks(prev => mergeArrays(prev, syncResult.data.tasks));
+              }
+              if (syncResult.data.habits.length > 0) {
+                setHabits(prev => mergeArrays(prev, syncResult.data.habits));
+              }
+              if (syncResult.data.objectives.length > 0) {
+                setObjectives(prev => mergeArrays(prev, syncResult.data.objectives));
+              }
+              if (syncResult.data.keyResults.length > 0) {
+                setKeyResults(prev => mergeArrays(prev, syncResult.data.keyResults));
+              }
+              if (syncResult.data.lifeAreas.length > 0) {
+                setLifeAreas(prev => mergeArrays(prev, syncResult.data.lifeAreas));
+              }
+              if (syncResult.data.timeSlots.length > 0) {
+                setTimeSlots(prev => mergeArrays(prev, syncResult.data.timeSlots));
+              }
+              if (syncResult.data.friends.length > 0) {
+                setFriends(prev => mergeArrays(prev, syncResult.data.friends));
+              }
+              if (syncResult.data.statusUpdates.length > 0) {
+                setStatusUpdates(prev => mergeArrays(prev, syncResult.data.statusUpdates));
+              }
               if (syncResult.data.userProfile) {
                 setUserProfile(prev => ({ ...prev, ...syncResult.data.userProfile }));
               }
@@ -390,52 +416,62 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         // Set up real-time listeners for each collection
         const unsubscribers: (() => void)[] = [];
 
-        // Watch for changes in Firebase (only update if Firebase has data)
+        // Watch for changes in Firebase - merge with local data to avoid duplicates
+        // Helper function to merge arrays by ID, keeping Firebase version if both exist
+        const mergeArrays = <T extends { id: string }>(local: T[], firebase: T[]): T[] => {
+          const merged = new Map<string, T>();
+          // First add all local items
+          local.forEach(item => merged.set(item.id, item));
+          // Then add/update with Firebase items (Firebase wins on conflict)
+          firebase.forEach(item => merged.set(item.id, item));
+          return Array.from(merged.values());
+        };
+
         unsubscribers.push(watchFirebaseChanges('tasks', (firebaseTasks) => {
           if (firebaseTasks.length > 0) {
-            setTasks(firebaseTasks);
+            setTasks(prev => mergeArrays(prev, firebaseTasks));
           }
         }));
 
         unsubscribers.push(watchFirebaseChanges('objectives', (firebaseObjectives) => {
           if (firebaseObjectives.length > 0) {
-            setObjectives(firebaseObjectives);
+            setObjectives(prev => mergeArrays(prev, firebaseObjectives));
           }
         }));
 
         unsubscribers.push(watchFirebaseChanges('keyResults', (firebaseKeyResults) => {
           if (firebaseKeyResults.length > 0) {
-            setKeyResults(firebaseKeyResults);
+            setKeyResults(prev => mergeArrays(prev, firebaseKeyResults));
           }
         }));
 
         unsubscribers.push(watchFirebaseChanges('timeSlots', (firebaseTimeSlots) => {
           if (firebaseTimeSlots.length > 0) {
-            setTimeSlots(firebaseTimeSlots);
+            setTimeSlots(prev => mergeArrays(prev, firebaseTimeSlots));
           }
         }));
 
         unsubscribers.push(watchFirebaseChanges('habits', (firebaseHabits) => {
           if (firebaseHabits.length > 0) {
-            setHabits(firebaseHabits);
+            setHabits(prev => mergeArrays(prev, firebaseHabits));
           }
         }));
 
         unsubscribers.push(watchFirebaseChanges('lifeAreas', (firebaseLifeAreas) => {
           if (firebaseLifeAreas.length > 0) {
-            setLifeAreas(firebaseLifeAreas);
+            setLifeAreas(prev => mergeArrays(prev, firebaseLifeAreas));
           }
         }));
 
         unsubscribers.push(watchFirebaseChanges('friends', (firebaseFriends) => {
           if (firebaseFriends.length > 0) {
-            setFriends(firebaseFriends);
+            setFriends(prev => mergeArrays(prev, firebaseFriends));
           }
         }));
 
         unsubscribers.push(watchFirebaseChanges('statusUpdates', (firebaseStatusUpdates) => {
           if (firebaseStatusUpdates.length > 0) {
-            setStatusUpdates(firebaseStatusUpdates);
+            setStatusUpdates(prev => mergeArrays(prev, firebaseStatusUpdates));
           }
         }));
 
@@ -459,6 +495,13 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const updateUserProfile = (profile: Partial<UserProfile>) => setUserProfile(prev => ({ ...prev, ...profile }));
 
   const addTask = (item: Task) => {
+    // Check if task already exists (prevent duplicates)
+    const existingIndex = tasks.findIndex(t => t.id === item.id);
+    if (existingIndex >= 0) {
+      // Update existing task instead of adding duplicate
+      updateTask(item);
+      return;
+    }
     setTasks([...tasks, item]);
     // Auto-sync to Google Tasks
     syncService.queueSync('task', 'create', item.id, item);
@@ -489,13 +532,24 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
     // Auto-sync delete to Firebase (async, fire and forget)
     if (isAuthenticated()) {
-      syncEntityToFirebase('tasks', { id, deleted: true }, id).catch(error => {
+      deleteEntityFromFirebase('tasks', id).catch(error => {
         console.error('Error deleting task from Firebase:', error);
       });
     }
   };
 
   const addHabit = (item: Habit) => {
+    // Check if habit already exists (prevent duplicates)
+    const existingIndex = habits.findIndex(h => h.id === item.id);
+    if (existingIndex >= 0) {
+      // Update existing habit instead of adding duplicate
+      const newItem = {
+        ...item,
+        weeklyProgress: item.weeklyProgress || [false, false, false, false, false, false, false]
+      };
+      updateHabit(newItem);
+      return;
+    }
     const newItem = {
         ...item,
         weeklyProgress: item.weeklyProgress || [false, false, false, false, false, false, false]
@@ -521,13 +575,20 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setHabits(habits.filter(h => h.id !== id));
     // Auto-sync delete to Firebase
     if (isAuthenticated()) {
-      syncEntityToFirebase('habits', { id, deleted: true }, id).catch(error => {
+      deleteEntityFromFirebase('habits', id).catch(error => {
         console.error('Error deleting habit from Firebase:', error);
       });
     }
   };
 
   const addFriend = (item: Friend) => {
+    // Check if friend already exists (prevent duplicates)
+    const existingIndex = friends.findIndex(f => f.id === item.id);
+    if (existingIndex >= 0) {
+      // Update existing friend instead of adding duplicate
+      updateFriend(item);
+      return;
+    }
     setFriends([...friends, item]);
     // Auto-sync to Firebase
     if (isAuthenticated()) {
@@ -549,13 +610,20 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setFriends(friends.filter(f => f.id !== id));
     // Auto-sync delete to Firebase
     if (isAuthenticated()) {
-      syncEntityToFirebase('friends', { id, deleted: true }, id).catch(error => {
+      deleteEntityFromFirebase('friends', id).catch(error => {
         console.error('Error deleting friend from Firebase:', error);
       });
     }
   };
 
   const addObjective = (item: Objective) => {
+    // Check if objective already exists (prevent duplicates)
+    const existingIndex = objectives.findIndex(o => o.id === item.id);
+    if (existingIndex >= 0) {
+      // Update existing objective instead of adding duplicate
+      updateObjective(item);
+      return;
+    }
     setObjectives([...objectives, item]);
     // Auto-sync goal deadline to Google Calendar
     syncService.queueSync('objective', 'create', item.id, item);
@@ -587,7 +655,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
     // Auto-sync delete to Firebase (async, fire and forget)
     if (isAuthenticated()) {
-      syncEntityToFirebase('objectives', { id, deleted: true }, id).catch(error => {
+      deleteEntityFromFirebase('objectives', id).catch(error => {
         console.error('Error deleting objective from Firebase:', error);
       });
     }
@@ -607,6 +675,13 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const addKeyResult = (item: KeyResult) => {
+    // Check if key result already exists (prevent duplicates)
+    const existingIndex = keyResults.findIndex(k => k.id === item.id);
+    if (existingIndex >= 0) {
+      // Update existing key result instead of adding duplicate
+      updateKeyResult(item);
+      return;
+    }
     setKeyResults([...keyResults, item]);
   };
   
@@ -618,14 +693,37 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setKeyResults(keyResults.filter(k => k.id !== id));
   };
 
-  const addPlace = (item: Place) => setPlaces([...places, item]);
+  const addPlace = (item: Place) => {
+    // Check if place already exists (prevent duplicates)
+    const existingIndex = places.findIndex(p => p.id === item.id);
+    if (existingIndex >= 0) {
+      // Place already exists, don't add duplicate
+      return;
+    }
+    setPlaces([...places, item]);
+  };
   const deletePlace = (id: string) => setPlaces(places.filter(p => p.id !== id));
 
-  const addTeamMember = (item: TeamMember) => setTeamMembers([...teamMembers, item]);
+  const addTeamMember = (item: TeamMember) => {
+    // Check if team member already exists (prevent duplicates)
+    const existingIndex = teamMembers.findIndex(t => t.id === item.id);
+    if (existingIndex >= 0) {
+      // Team member already exists, don't add duplicate
+      return;
+    }
+    setTeamMembers([...teamMembers, item]);
+  };
   const deleteTeamMember = (id: string) => setTeamMembers(teamMembers.filter(t => t.id !== id));
 
   // Life Planner actions
   const addLifeArea = (item: LifeArea) => {
+    // Check if life area already exists (prevent duplicates)
+    const existingIndex = lifeAreas.findIndex(la => la.id === item.id);
+    if (existingIndex >= 0) {
+      // Update existing life area instead of adding duplicate
+      updateLifeArea(item);
+      return;
+    }
     setLifeAreas([...lifeAreas, item]);
     // Auto-sync to Firebase
     if (isAuthenticated()) {
@@ -649,7 +747,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setVisions(visions.filter(v => v.lifeAreaId !== id));
     // Auto-sync delete to Firebase
     if (isAuthenticated()) {
-      syncEntityToFirebase('lifeAreas', { id, deleted: true }, id).catch(error => {
+      deleteEntityFromFirebase('lifeAreas', id).catch(error => {
         console.error('Error deleting lifeArea from Firebase:', error);
       });
     }
@@ -657,11 +755,27 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
   const reorderLifeAreas = (newOrder: LifeArea[]) => setLifeAreas(newOrder);
 
-  const addVision = (item: Vision) => setVisions([...visions, item]);
+  const addVision = (item: Vision) => {
+    // Check if vision already exists (prevent duplicates)
+    const existingIndex = visions.findIndex(v => v.id === item.id);
+    if (existingIndex >= 0) {
+      // Update existing vision instead of adding duplicate
+      updateVision(item);
+      return;
+    }
+    setVisions([...visions, item]);
+  };
   const updateVision = (item: Vision) => setVisions(visions.map(v => v.id === item.id ? item : v));
   const deleteVision = (id: string) => setVisions(visions.filter(v => v.id !== id));
 
   const addTimeSlot = async (item: TimeSlot) => {
+    // Check if time slot already exists (prevent duplicates)
+    const existingIndex = timeSlots.findIndex(ts => ts.id === item.id);
+    if (existingIndex >= 0) {
+      // Update existing time slot instead of adding duplicate
+      await updateTimeSlot(item);
+      return;
+    }
     setTimeSlots([...timeSlots, item]);
     // Auto-sync to Google Calendar
     syncService.queueSync('timeSlot', 'create', item.id, item);
@@ -697,7 +811,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // Auto-sync delete to Firebase
     if (isAuthenticated()) {
       try {
-        await syncEntityToFirebase('timeSlots', { id, deleted: true }, id);
+        await deleteEntityFromFirebase('timeSlots', id);
       } catch (error) {
         console.error('Error deleting timeSlot from Firebase:', error);
       }
@@ -718,11 +832,24 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // Status Updates
   const addStatusUpdate = (update: StatusUpdate) => {
+    // Check if status update already exists (prevent duplicates)
+    const existingIndex = statusUpdates.findIndex(su => su.id === update.id);
+    if (existingIndex >= 0) {
+      // Update existing status update instead of adding duplicate
+      updateStatusUpdate(update);
+      return;
+    }
     setStatusUpdates([...statusUpdates, update]);
     // Update ook de current waarde en status van het Key Result
     const kr = keyResults.find(k => k.id === update.keyResultId);
     if (kr) {
       updateKeyResult({ ...kr, current: update.currentValue, status: update.status });
+    }
+    // Auto-sync to Firebase
+    if (isAuthenticated()) {
+      syncEntityToFirebase('statusUpdates', update, update.id).catch(error => {
+        console.error('Error syncing statusUpdate to Firebase:', error);
+      });
     }
   };
   const updateStatusUpdate = (update: StatusUpdate) => {
@@ -738,7 +865,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setStatusUpdates(statusUpdates.filter(su => su.id !== id));
     // Auto-sync delete to Firebase
     if (isAuthenticated()) {
-      syncEntityToFirebase('statusUpdates', { id, deleted: true }, id).catch(error => {
+      deleteEntityFromFirebase('statusUpdates', id).catch(error => {
         console.error('Error deleting statusUpdate from Firebase:', error);
       });
     }

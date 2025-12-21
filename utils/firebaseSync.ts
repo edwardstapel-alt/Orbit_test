@@ -12,7 +12,8 @@ import {
   where,
   Timestamp,
   serverTimestamp,
-  writeBatch
+  writeBatch,
+  deleteDoc
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { Task, Habit, Objective, KeyResult, LifeArea, TimeSlot, Friend, UserProfile, StatusUpdate } from '../types';
@@ -114,21 +115,27 @@ export const syncEntitiesFromFirebase = async (
     const collectionRef = collection(db, getUserCollection(collectionName));
     const snapshot = await getDocs(collectionRef);
     
-    const data = snapshot.docs.map(doc => {
-      const docData = doc.data();
-      // Convert Firestore Timestamps to ISO strings
-      const processed: any = { ...docData };
-      if (processed.updatedAt && processed.updatedAt.toDate) {
-        processed.updatedAt = processed.updatedAt.toDate().toISOString();
-      }
-      if (processed.syncedAt && processed.syncedAt.toDate) {
-        processed.syncedAt = processed.syncedAt.toDate().toISOString();
-      }
-      if (processed.createdAt && processed.createdAt.toDate) {
-        processed.createdAt = processed.createdAt.toDate().toISOString();
-      }
-      return processed;
-    });
+    const data = snapshot.docs
+      .map(doc => {
+        const docData = doc.data();
+        // Skip deleted items
+        if (docData.deleted === true) {
+          return null;
+        }
+        // Convert Firestore Timestamps to ISO strings
+        const processed: any = { ...docData };
+        if (processed.updatedAt && processed.updatedAt.toDate) {
+          processed.updatedAt = processed.updatedAt.toDate().toISOString();
+        }
+        if (processed.syncedAt && processed.syncedAt.toDate) {
+          processed.syncedAt = processed.syncedAt.toDate().toISOString();
+        }
+        if (processed.createdAt && processed.createdAt.toDate) {
+          processed.createdAt = processed.createdAt.toDate().toISOString();
+        }
+        return processed;
+      })
+      .filter(item => item !== null); // Remove null items (deleted)
 
     return { success: true, data };
   } catch (error: any) {
@@ -151,21 +158,27 @@ export const watchFirebaseChanges = (
   try {
     const collectionRef = collection(db, getUserCollection(collectionName));
     const unsubscribe = onSnapshot(collectionRef, (snapshot) => {
-      const data = snapshot.docs.map(doc => {
-        const docData = doc.data();
-        // Convert Firestore Timestamps to ISO strings
-        const processed: any = { ...docData };
-        if (processed.updatedAt && processed.updatedAt.toDate) {
-          processed.updatedAt = processed.updatedAt.toDate().toISOString();
-        }
-        if (processed.syncedAt && processed.syncedAt.toDate) {
-          processed.syncedAt = processed.syncedAt.toDate().toISOString();
-        }
-        if (processed.createdAt && processed.createdAt.toDate) {
-          processed.createdAt = processed.createdAt.toDate().toISOString();
-        }
-        return processed;
-      });
+      const data = snapshot.docs
+        .map(doc => {
+          const docData = doc.data();
+          // Skip deleted items
+          if (docData.deleted === true) {
+            return null;
+          }
+          // Convert Firestore Timestamps to ISO strings
+          const processed: any = { ...docData };
+          if (processed.updatedAt && processed.updatedAt.toDate) {
+            processed.updatedAt = processed.updatedAt.toDate().toISOString();
+          }
+          if (processed.syncedAt && processed.syncedAt.toDate) {
+            processed.syncedAt = processed.syncedAt.toDate().toISOString();
+          }
+          if (processed.createdAt && processed.createdAt.toDate) {
+            processed.createdAt = processed.createdAt.toDate().toISOString();
+          }
+          return processed;
+        })
+        .filter(item => item !== null); // Remove null items (deleted)
       callback(data);
     }, (error) => {
       console.error(`Error watching ${collectionName}:`, error);
@@ -323,9 +336,8 @@ export const deleteEntityFromFirebase = async (
     }
 
     const docRef = doc(db, getUserCollection(collectionName), entityId);
-    await setDoc(docRef, { deleted: true, deletedAt: serverTimestamp() }, { merge: true });
-    // Or use deleteDoc if you want to actually delete:
-    // await deleteDoc(docRef);
+    // Actually delete the document from Firestore
+    await deleteDoc(docRef);
 
     return { success: true };
   } catch (error: any) {
