@@ -12,16 +12,18 @@ export const PersonalSettings: React.FC<PersonalSettingsProps> = ({ onBack }) =>
   const [lastName, setLastName] = useState(userProfile.lastName);
   const [email, setEmail] = useState(userProfile.email);
   const [dob, setDob] = useState(userProfile.dob);
+  const [image, setImage] = useState(userProfile.image);
 
   useEffect(() => {
       setFirstName(userProfile.firstName);
       setLastName(userProfile.lastName);
       setEmail(userProfile.email);
       setDob(userProfile.dob);
+      setImage(userProfile.image);
   }, [userProfile]);
 
   const handleSave = () => {
-      updateUserProfile({ firstName, lastName, email, dob });
+      updateUserProfile({ firstName, lastName, email, dob, image });
       onBack();
   };
 
@@ -39,7 +41,19 @@ export const PersonalSettings: React.FC<PersonalSettingsProps> = ({ onBack }) =>
 
       <div className="flex flex-col items-center py-8">
         <div className="relative mb-6 group">
-             <div className="size-32 rounded-full bg-cover bg-center shadow-soft border-4 border-white" style={{backgroundImage: `url("${userProfile.image}")`}}></div>
+             <div 
+               className="size-32 rounded-full bg-cover bg-center shadow-soft border-4 border-white" 
+               style={{
+                 backgroundImage: userProfile.image ? `url("${userProfile.image}")` : 'none',
+                 backgroundColor: userProfile.image ? 'transparent' : '#E5E7EB'
+               }}
+             >
+               {!userProfile.image && (
+                 <div className="w-full h-full flex items-center justify-center text-text-tertiary">
+                   <span className="material-symbols-outlined text-6xl">account_circle</span>
+                 </div>
+               )}
+             </div>
              <button className="absolute bottom-0 right-0 size-10 bg-primary text-white rounded-full border-4 border-background flex items-center justify-center shadow-sm hover:scale-105 transition-transform">
                  <span className="material-symbols-outlined text-[20px]">photo_camera</span>
              </button>

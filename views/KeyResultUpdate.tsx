@@ -8,7 +8,7 @@ interface KeyResultUpdateProps {
 }
 
 export const KeyResultUpdate: React.FC<KeyResultUpdateProps> = ({ keyResultId, onClose, onEditFull }) => {
-  const { keyResults, updateKeyResult, teamMembers } = useData();
+  const { keyResults, updateKeyResult, teamMembers, formatKeyResultValue } = useData();
   const [currentValue, setCurrentValue] = useState(0);
   const [status, setStatus] = useState<string>('On Track');
   const [activeModal, setActiveModal] = useState<'owner' | 'date' | null>(null);
@@ -90,7 +90,7 @@ export const KeyResultUpdate: React.FC<KeyResultUpdateProps> = ({ keyResultId, o
             <div className="flex items-end justify-between mb-2">
                 <div className="flex items-baseline gap-1">
                     <span className="text-4xl font-bold text-primary">{currentValue}</span>
-                    <span className="text-text-secondary font-medium">/ {kr.target} {kr.unit}</span>
+                    <span className="text-text-secondary font-medium">/ {formatKeyResultValue(kr, kr.target)}</span>
                 </div>
                 <span className="text-sm font-bold text-text-main">{percentage}% Done</span>
             </div>
@@ -147,18 +147,28 @@ export const KeyResultUpdate: React.FC<KeyResultUpdateProps> = ({ keyResultId, o
                         <>
                             <h3 className="text-lg font-bold text-text-main mb-4">Assign Owner</h3>
                             <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                                {teamMembers.map(member => (
+                                {/* Primary owner first */}
+                                {teamMembers
+                                  .sort((a, b) => {
+                                    if (a.role === 'You') return -1;
+                                    if (b.role === 'You') return 1;
+                                    return 0;
+                                  })
+                                  .map(member => (
                                     <button 
                                         key={member.id} 
                                         onClick={() => handleUpdateOwner(member)}
                                         className={`w-full flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors ${kr.owner === member.name ? 'bg-primary/5 border border-primary/20' : 'border border-transparent'}`}
                                     >
                                         <img src={member.image} alt={member.name} className="size-10 rounded-full" />
-                                        <div className="text-left">
+                                        <div className="text-left flex-1">
                                             <p className="font-semibold text-text-main text-sm">{member.name}</p>
                                             <p className="text-xs text-text-tertiary">{member.role}</p>
                                         </div>
                                         {kr.owner === member.name && <span className="material-symbols-outlined text-primary ml-auto">check</span>}
+                                        {member.role === 'You' && (
+                                          <span className="px-2 py-0.5 rounded bg-primary/10 text-primary text-[10px] font-bold uppercase ml-2">Primary</span>
+                                        )}
                                     </button>
                                 ))}
                             </div>

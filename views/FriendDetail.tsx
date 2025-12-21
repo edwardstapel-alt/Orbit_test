@@ -1,5 +1,6 @@
 import React from 'react';
 import { Friend, View } from '../types';
+import { useData } from '../context/DataContext';
 
 interface FriendDetailProps {
   friend: Friend | null;
@@ -7,7 +8,10 @@ interface FriendDetailProps {
 }
 
 export const FriendDetail: React.FC<FriendDetailProps> = ({ friend, onBack }) => {
+  const { tasks } = useData();
   if (!friend) return null;
+
+  const friendTasks = tasks.filter(t => t.friendId === friend.id);
 
   const handleCall = () => {
     window.location.href = 'tel:+1234567890';
@@ -85,42 +89,42 @@ export const FriendDetail: React.FC<FriendDetailProps> = ({ friend, onBack }) =>
 
       <div className="flex flex-col px-5 gap-4 mb-8">
         <div className="flex items-center justify-between">
-          <h3 className="text-text-main text-lg font-semibold tracking-tight">Upcoming</h3>
-          <button onClick={() => alert("Open New Plan Modal")} className="text-primary hover:bg-primary/5 px-3 py-1 rounded-full text-xs font-medium transition-colors">
-            + New Plan
-          </button>
+          <h3 className="text-text-main text-lg font-semibold tracking-tight">Linked Tasks</h3>
+          <span className="text-xs text-text-tertiary font-medium">{friendTasks.length} {friendTasks.length === 1 ? 'task' : 'tasks'}</span>
         </div>
-        <div className="group relative overflow-hidden rounded-3xl bg-white p-1 shadow-sm transition-shadow hover:shadow-soft">
-          <div className="p-4 flex gap-4 items-start relative z-10">
-            <div className="flex flex-col items-center justify-center w-14 h-14 shrink-0 rounded-2xl bg-slate-50 text-text-main border border-slate-100">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-text-tertiary">Oct</span>
-              <span className="text-xl font-bold leading-none mt-0.5 text-primary">24</span>
-            </div>
-            <div className="flex flex-col flex-1 gap-1.5 min-w-0">
-              <p className="text-text-main text-base font-semibold leading-tight truncate">Birthday Dinner</p>
-              <div className="flex flex-wrap gap-y-1 gap-x-3 text-text-secondary text-sm">
-                <div className="flex items-center gap-1">
-                  <span className="material-symbols-outlined text-text-tertiary" style={{fontSize: '16px'}}>schedule</span>
-                  <span>7:00 PM</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <span className="material-symbols-outlined text-text-tertiary" style={{fontSize: '16px'}}>location_on</span>
-                  <span className="truncate">Downtown Bistro</span>
+        {friendTasks.length === 0 ? (
+          <div className="rounded-3xl bg-white p-8 shadow-sm border border-slate-100 text-center">
+            <span className="material-symbols-outlined text-text-tertiary text-4xl mb-3 block">task_alt</span>
+            <p className="text-text-secondary text-sm font-medium">No tasks linked to {friend.name}</p>
+            <p className="text-text-tertiary text-xs mt-2">Link tasks to this person in the Tasks view</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {friendTasks.map(task => (
+              <div key={task.id} className="group relative overflow-hidden rounded-2xl bg-white p-4 shadow-sm border border-slate-100 transition-shadow hover:shadow-soft">
+                <div className="flex items-start gap-3">
+                  <div className={`size-6 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${task.completed ? 'bg-primary text-white' : 'bg-slate-100 border border-slate-200'}`}>
+                    {task.completed && <span className="material-symbols-outlined text-[14px]">check</span>}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-text-main text-sm font-semibold leading-tight ${task.completed ? 'line-through text-text-tertiary' : ''}`}>{task.title}</p>
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-200 text-text-secondary">
+                        {task.tag}
+                      </span>
+                      {task.time && (
+                        <span className="text-text-tertiary text-[10px] font-medium flex items-center gap-1">
+                          <span className="material-symbols-outlined text-[12px]">schedule</span>
+                          {task.time}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
+            ))}
           </div>
-          <div className="px-4 pb-4 pt-1 flex items-center justify-end gap-2 relative z-10">
-            <button onClick={() => alert("Edit plan")} className="size-8 rounded-full flex items-center justify-center text-text-tertiary hover:bg-slate-50 hover:text-text-main transition-colors">
-              <span className="material-symbols-outlined" style={{fontSize: '18px'}}>edit</span>
-            </button>
-            <button onClick={() => alert("Cancel plan?")} className="size-8 rounded-full flex items-center justify-center text-text-tertiary hover:bg-slate-50 hover:text-red-500 transition-colors">
-              <span className="material-symbols-outlined" style={{fontSize: '18px'}}>close</span>
-            </button>
-          </div>
-          <div className="absolute right-0 top-0 w-24 h-full bg-gradient-to-l from-white via-white/80 to-transparent z-0"></div>
-          <div className="absolute right-0 top-0 w-1/3 h-full bg-cover bg-center opacity-20 saturate-0 group-hover:saturate-50 transition-all duration-700" style={{backgroundImage: 'url("https://picsum.photos/id/431/200/300")'}}></div>
-        </div>
+        )}
       </div>
 
       <div className="flex flex-col px-5 gap-4 mb-8">

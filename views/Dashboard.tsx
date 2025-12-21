@@ -7,7 +7,6 @@ interface DashboardProps {
   onNavigate: (view: View) => void;
   onEdit: (type: any, id?: string, parentId?: string) => void;
   onViewObjective: (id: string) => void;
-  onUpdateKeyResult: (id: string) => void;
   onMenuClick: () => void;
   onProfileClick: () => void;
 }
@@ -16,9 +15,9 @@ const ObjectiveCard: React.FC<{
     objective: any, 
     keyResults: any[], 
     onView: () => void, 
-    onUpdateKR: (id: string) => void,
+    onEdit: (type: 'keyResult', id?: string, parentId?: string) => void,
     onAddKR: () => void 
-}> = ({ objective, keyResults, onView, onUpdateKR, onAddKR }) => {
+}> = ({ objective, keyResults, onView, onEdit, onAddKR }) => {
   
   const calculatedProgress = keyResults.length > 0 
     ? Math.round(keyResults.reduce((acc, kr) => acc + (kr.current / kr.target) * 100, 0) / keyResults.length)
@@ -78,7 +77,7 @@ const ObjectiveCard: React.FC<{
         {keyResults.map(kr => {
            const krProgress = Math.min(Math.round((kr.current / kr.target) * 100), 100);
            return (
-            <div key={kr.id} className="flex items-center gap-3 cursor-pointer group" onClick={(e) => { e.stopPropagation(); onUpdateKR(kr.id); }}>
+            <div key={kr.id} className="flex items-center gap-3 cursor-pointer group" onClick={(e) => { e.stopPropagation(); onEdit('keyResult', kr.id, objective.id); }}>
                 <div className={`h-1.5 w-1.5 rounded-full shrink-0 ${kr.status === 'On Track' ? 'bg-green-500' : kr.status === 'At Risk' ? 'bg-amber-500' : 'bg-red-500'}`}></div>
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
@@ -97,17 +96,17 @@ const ObjectiveCard: React.FC<{
   );
 };
 
-export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onViewObjective, onUpdateKeyResult, onMenuClick, onProfileClick }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onViewObjective, onMenuClick, onProfileClick }) => {
   const [mode, setMode] = useState<'personal' | 'professional'>('professional');
-  const { tasks, habits, objectives, keyResults, updateTask } = useData();
+  const { tasks, habits, objectives, keyResults, updateTask, userProfile, showCategory } = useData();
 
-  // Filter Data based on mode
-  const filteredTasks = tasks.filter(t => {
+  // Filter Data based on mode (only if showCategory is enabled)
+  const filteredTasks = showCategory ? tasks.filter(t => {
       if (mode === 'professional') return ['Work', 'Finance', 'Strategy', 'Meeting'].includes(t.tag);
       return !['Work', 'Finance', 'Strategy', 'Meeting'].includes(t.tag);
-  });
+  }) : tasks;
 
-  const filteredObjectives = objectives.filter(obj => obj.category === mode);
+  const filteredObjectives = showCategory ? objectives.filter(obj => obj.category === mode) : objectives;
 
   const toggleTask = (id: string) => {
     const task = tasks.find(t => t.id === id);
@@ -117,29 +116,31 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
   return (
     <div className="flex flex-col w-full h-full overflow-y-auto no-scrollbar pb-32">
       <TopNav 
-        title="Focus, Alex" 
+        title={`Focus, ${userProfile.firstName || 'there'}`} 
         subtitle="Good Morning" 
         onMenuClick={onMenuClick}
         onProfileClick={onProfileClick} 
       />
 
-      {/* Toggle */}
-      <section className="px-6 mt-4">
-        <div className="flex h-12 w-full items-center justify-center rounded-2xl bg-[#E6E6E6] p-1.5 shadow-inner">
-          <button 
-            onClick={() => setMode('personal')}
-            className={`flex-1 h-full text-sm font-semibold rounded-xl transition-all ${mode === 'personal' ? 'bg-white text-primary shadow-sm' : 'bg-transparent text-text-secondary hover:text-text-main'}`}
-          >
-            Personal
-          </button>
-          <button 
-            onClick={() => setMode('professional')}
-            className={`flex-1 h-full text-sm font-semibold rounded-xl transition-all ${mode === 'professional' ? 'bg-white text-primary shadow-sm' : 'bg-transparent text-text-secondary hover:text-text-main'}`}
-          >
-            Professional
-          </button>
-        </div>
-      </section>
+      {/* Toggle - Only show if showCategory is enabled */}
+      {showCategory && (
+        <section className="px-6 mt-4">
+          <div className="flex h-12 w-full items-center justify-center rounded-2xl bg-[#E6E6E6] p-1.5 shadow-inner">
+            <button 
+              onClick={() => setMode('personal')}
+              className={`flex-1 h-full text-sm font-semibold rounded-xl transition-all ${mode === 'personal' ? 'bg-white text-primary shadow-sm' : 'bg-transparent text-text-secondary hover:text-text-main'}`}
+            >
+              Personal
+            </button>
+            <button 
+              onClick={() => setMode('professional')}
+              className={`flex-1 h-full text-sm font-semibold rounded-xl transition-all ${mode === 'professional' ? 'bg-white text-primary shadow-sm' : 'bg-transparent text-text-secondary hover:text-text-main'}`}
+            >
+              Professional
+            </button>
+          </div>
+        </section>
+      )}
 
       {/* OKRs (Objectives) */}
       <section className="w-full mt-8 px-6">
@@ -163,7 +164,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
                 objective={obj} 
                 keyResults={keyResults.filter(kr => kr.objectiveId === obj.id)}
                 onView={() => onViewObjective(obj.id)}
-                onUpdateKR={onUpdateKeyResult}
+                onEdit={onEdit}
                 onAddKR={() => onEdit('keyResult', undefined, obj.id)}
             />
         ))}
@@ -173,9 +174,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
       <section className="px-6 mt-4">
         <div className="flex items-center justify-between mb-4 px-1">
           <h3 className="text-text-main text-lg font-bold tracking-tight">Daily Focus</h3>
-          <button className="size-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-text-secondary transition-colors" onClick={() => onEdit('task')}>
-            <span className="material-symbols-outlined text-[20px]">add</span>
-          </button>
         </div>
         <div className="bg-white rounded-3xl shadow-soft overflow-hidden min-h-[100px]">
           {filteredTasks.length === 0 ? (
@@ -204,6 +202,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
                 ))}
             </div>
           )}
+          
+          {/* Add Task Button */}
+          <button
+            onClick={() => onEdit('task')}
+            className="w-full bg-white rounded-2xl shadow-sm border-2 border-dashed border-slate-200 p-4 m-4 hover:border-primary/50 hover:bg-primary/5 transition-colors group"
+          >
+            <div className="flex items-center justify-center gap-3">
+              <span className="material-symbols-outlined text-text-tertiary group-hover:text-primary transition-colors">
+                add_circle
+              </span>
+              <span className="text-sm font-semibold text-text-secondary group-hover:text-primary transition-colors">
+                Add Task
+              </span>
+            </div>
+          </button>
         </div>
       </section>
 
@@ -211,10 +224,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
       <section className="w-full mt-8">
         <h3 className="text-text-main text-lg font-bold tracking-tight px-6 mb-4">Habit Streaks</h3>
         <div className="flex overflow-x-auto no-scrollbar px-6 pb-6 gap-4 snap-x">
-            <div onClick={() => onEdit('habit')} className="snap-start flex flex-col items-center justify-center gap-2 p-4 rounded-3xl bg-slate-100 shrink-0 min-w-[140px] aspect-square cursor-pointer hover:bg-slate-200 transition-colors">
-                 <span className="material-symbols-outlined text-3xl text-text-tertiary">add</span>
-                 <span className="text-xs font-bold text-text-tertiary">New Habit</span>
-            </div>
+            <button 
+              onClick={() => onEdit('habit')} 
+              className="snap-start flex flex-col items-center justify-center gap-2 p-4 rounded-3xl bg-white shadow-sm border-2 border-dashed border-slate-200 shrink-0 min-w-[140px] aspect-square cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors group"
+            >
+              <span className="material-symbols-outlined text-3xl text-text-tertiary group-hover:text-primary transition-colors">add_circle</span>
+              <span className="text-xs font-semibold text-text-secondary group-hover:text-primary transition-colors">Add Habit</span>
+            </button>
           {habits.map((habit) => (
             <div 
                 key={habit.id} 

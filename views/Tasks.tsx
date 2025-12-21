@@ -11,7 +11,8 @@ interface TasksProps {
 }
 
 export const Tasks: React.FC<TasksProps> = ({ onEdit, onNavigate, onMenuClick, onProfileClick }) => {
-  const { tasks, habits, updateTask, updateHabit, addTask } = useData();
+  const { tasks, habits, friends, updateTask, updateHabit, addTask, keyResults, updateKeyResult } = useData();
+  const [activeModal, setActiveModal] = useState<'addTask' | 'addHabit' | null>(null);
   const [referenceDate, setReferenceDate] = useState(new Date());
 
   // Date Helpers
@@ -62,7 +63,9 @@ export const Tasks: React.FC<TasksProps> = ({ onEdit, onNavigate, onMenuClick, o
     const habit = habits.find(h => h.id === habitId);
     if(habit) {
         const newHistory = [...(habit.weeklyProgress || [false, false, false, false, false, false, false])];
+        const wasCompleted = newHistory[dayIndex];
         newHistory[dayIndex] = !newHistory[dayIndex];
+        const isNowCompleted = newHistory[dayIndex];
         
         // Simple streak logic approximation based on modification of today
         const today = new Date();
@@ -85,6 +88,30 @@ export const Tasks: React.FC<TasksProps> = ({ onEdit, onNavigate, onMenuClick, o
             streak: newStreak, 
             weeklyProgress: newHistory
         });
+
+        // Update Key Result progress if habit is linked and has contribution value
+        if (habit.linkedKeyResultId && habit.progressContribution && habit.progressContribution > 0) {
+            const keyResult = keyResults.find(kr => kr.id === habit.linkedKeyResultId);
+            if (keyResult) {
+                const contribution = habit.progressContribution;
+                let newCurrent = keyResult.current;
+                
+                if (isNowCompleted && !wasCompleted) {
+                    // Habit was just completed - add contribution
+                    newCurrent = Math.min(keyResult.current + contribution, keyResult.target);
+                } else if (!isNowCompleted && wasCompleted) {
+                    // Habit was uncompleted - subtract contribution
+                    newCurrent = Math.max(keyResult.current - contribution, 0);
+                }
+                
+                if (newCurrent !== keyResult.current) {
+                    updateKeyResult({
+                        ...keyResult,
+                        current: newCurrent
+                    });
+                }
+            }
+        }
     }
   };
 
@@ -117,8 +144,6 @@ export const Tasks: React.FC<TasksProps> = ({ onEdit, onNavigate, onMenuClick, o
         <section className="mb-8">
             <h3 className="text-xs font-bold text-text-tertiary uppercase tracking-widest mb-3 pl-1">My Habits</h3>
             <div className="space-y-3">
-                {habits.length === 0 && <div className="text-center text-text-tertiary py-4 text-sm bg-white rounded-2xl border border-dashed border-slate-200">No habits defined.</div>}
-                
                 {habits.map(habit => {
                         // Calculate percentage based on days PASSED
                         let daysPassed = 0;
@@ -196,6 +221,21 @@ export const Tasks: React.FC<TasksProps> = ({ onEdit, onNavigate, onMenuClick, o
                         </div>
                         )
                 })}
+                
+                {/* Add Habit Button */}
+                <button
+                    onClick={() => setActiveModal('addHabit')}
+                    className="w-full bg-white rounded-2xl shadow-sm border-2 border-dashed border-slate-200 p-6 hover:border-primary/50 hover:bg-primary/5 transition-colors group"
+                >
+                    <div className="flex items-center justify-center gap-3">
+                        <span className="material-symbols-outlined text-text-tertiary group-hover:text-primary transition-colors">
+                            add_circle
+                        </span>
+                        <span className="text-sm font-semibold text-text-secondary group-hover:text-primary transition-colors">
+                            Add Habit
+                        </span>
+                    </div>
+                </button>
             </div>
         </section>
 
@@ -227,6 +267,23 @@ export const Tasks: React.FC<TasksProps> = ({ onEdit, onNavigate, onMenuClick, o
                   <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-200 text-text-secondary">
                     {task.tag}
                   </span>
+                  {task.friendId && (() => {
+                    const friend = friends.find(f => f.id === task.friendId);
+                    return friend ? (
+                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-primary/10 text-primary border border-primary/20">
+                        {friend.image ? (
+                          <img 
+                            src={friend.image} 
+                            alt={friend.name}
+                            className="size-4 rounded-full object-cover border border-primary/20"
+                          />
+                        ) : (
+                          <span className="material-symbols-outlined text-[12px]">person</span>
+                        )}
+                        {friend.name}
+                      </span>
+                    ) : null;
+                  })()}
                 </div>
               </div>
               <button className="text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing p-1">
@@ -234,6 +291,22 @@ export const Tasks: React.FC<TasksProps> = ({ onEdit, onNavigate, onMenuClick, o
               </button>
             </div>
           ))}
+          
+          {/* Add Task Button */}
+          <button
+            onClick={() => setActiveModal('addTask')}
+            className="w-full bg-white rounded-2xl shadow-sm border-2 border-dashed border-slate-200 p-6 hover:border-primary/50 hover:bg-primary/5 transition-colors group mt-4"
+          >
+            <div className="flex items-center justify-center gap-3">
+              <span className="material-symbols-outlined text-text-tertiary group-hover:text-primary transition-colors">
+                add_circle
+              </span>
+              <span className="text-sm font-semibold text-text-secondary group-hover:text-primary transition-colors">
+                Add Task
+              </span>
+            </div>
+          </button>
+          
           <div className="pt-8 pb-4 text-center opacity-60">
             <div className={`inline-flex items-center justify-center p-3 mb-2 rounded-full transition-colors ${completedCount === tasks.length && tasks.length > 0 ? 'bg-primary/20 text-primary' : 'bg-slate-200 text-slate-400'}`}>
               <span className="material-symbols-outlined">check_circle</span>
@@ -243,11 +316,170 @@ export const Tasks: React.FC<TasksProps> = ({ onEdit, onNavigate, onMenuClick, o
         </section>
       </main>
 
-      <div className="absolute bottom-24 right-6 z-40">
-        <button onClick={() => addTask({ id: Date.now().toString(), title: "New Task", tag: "Work", completed: false, priority: false, time: "Now" })} className="group flex items-center justify-center size-14 rounded-2xl bg-primary shadow-glow hover:shadow-[0_0_20px_rgba(217,88,41,0.5)] active:scale-95 transition-all duration-300">
-          <span className="material-symbols-outlined text-white text-3xl group-hover:rotate-90 transition-transform duration-300">add</span>
-        </button>
-      </div>
+      {/* Add Task Modal */}
+      {activeModal === 'addTask' && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-end justify-center animate-fade-in">
+          <div className="w-full max-w-md bg-background rounded-t-3xl shadow-2xl animate-fade-in-up max-h-[80vh] flex flex-col">
+            <div className="sticky top-0 bg-background border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-text-main">Add Task</h3>
+              <button 
+                onClick={() => setActiveModal(null)}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <span className="material-symbols-outlined text-text-tertiary">close</span>
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto px-6 py-4">
+              <button
+                onClick={() => {
+                  setActiveModal(null);
+                  onEdit('task');
+                }}
+                className="w-full mb-4 p-4 rounded-xl bg-primary/10 border-2 border-primary/30 hover:bg-primary/20 transition-colors flex items-center justify-center gap-2"
+              >
+                <span className="material-symbols-outlined text-primary">add</span>
+                <span className="font-semibold text-primary">Create New Task</span>
+              </button>
+              
+              {tasks.length > 0 && (
+                <>
+                  <div className="mb-3">
+                    <h4 className="text-sm font-bold text-text-tertiary uppercase tracking-wider">Select Existing Task</h4>
+                  </div>
+                  <div className="space-y-2">
+                    {tasks.map(task => (
+                      <button
+                        key={task.id}
+                        onClick={() => {
+                          setActiveModal(null);
+                          onEdit('task', task.id);
+                        }}
+                        className="w-full p-4 rounded-xl bg-white border-2 border-gray-100 hover:border-primary/30 hover:bg-gray-50 transition-colors text-left"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <h5 className="font-semibold text-text-main mb-1">{task.title}</h5>
+                            <div className="flex items-center gap-2">
+                              {task.tag && (
+                                <span className="text-xs text-text-tertiary">{task.tag}</span>
+                              )}
+                              {task.time && (
+                                <>
+                                  {task.tag && <span className="text-text-tertiary">•</span>}
+                                  <span className="text-xs text-text-tertiary">{task.time}</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                          <span className="material-symbols-outlined text-text-tertiary ml-2">chevron_right</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+              
+              {tasks.length === 0 && (
+                <div className="text-center py-8">
+                  <span className="material-symbols-outlined text-4xl text-text-tertiary mb-2">task_alt</span>
+                  <p className="text-sm text-text-tertiary">No tasks available</p>
+                  <p className="text-xs text-text-tertiary mt-1">Create a new task to get started</p>
+                </div>
+              )}
+            </div>
+            
+            <div className="sticky bottom-0 bg-background border-t border-gray-200 px-6 py-4">
+              <button 
+                onClick={() => setActiveModal(null)}
+                className="w-full py-3 bg-gray-100 text-text-main font-bold rounded-xl hover:bg-gray-200"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Habit Modal */}
+      {activeModal === 'addHabit' && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-end justify-center animate-fade-in">
+          <div className="w-full max-w-md bg-background rounded-t-3xl shadow-2xl animate-fade-in-up max-h-[80vh] flex flex-col">
+            <div className="sticky top-0 bg-background border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-text-main">Add Habit</h3>
+              <button 
+                onClick={() => setActiveModal(null)}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <span className="material-symbols-outlined text-text-tertiary">close</span>
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto px-6 py-4">
+              <button
+                onClick={() => {
+                  setActiveModal(null);
+                  onEdit('habit');
+                }}
+                className="w-full mb-4 p-4 rounded-xl bg-primary/10 border-2 border-primary/30 hover:bg-primary/20 transition-colors flex items-center justify-center gap-2"
+              >
+                <span className="material-symbols-outlined text-primary">add</span>
+                <span className="font-semibold text-primary">Create New Habit</span>
+              </button>
+              
+              {habits.length > 0 && (
+                <>
+                  <div className="mb-3">
+                    <h4 className="text-sm font-bold text-text-tertiary uppercase tracking-wider">Select Existing Habit</h4>
+                  </div>
+                  <div className="space-y-2">
+                    {habits.map(habit => (
+                      <button
+                        key={habit.id}
+                        onClick={() => {
+                          setActiveModal(null);
+                          onEdit('habit', habit.id);
+                        }}
+                        className="w-full p-4 rounded-xl bg-white border-2 border-gray-100 hover:border-primary/30 hover:bg-gray-50 transition-colors text-left"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="size-10 rounded-xl bg-slate-50 flex items-center justify-center shrink-0">
+                            <span className="material-symbols-outlined text-text-secondary">{habit.icon}</span>
+                          </div>
+                          <div className="flex-1">
+                            <h5 className="font-semibold text-text-main mb-1">{habit.name}</h5>
+                            {habit.streak > 0 && (
+                              <span className="text-[10px] text-primary font-bold">🔥 {habit.streak} day streak</span>
+                            )}
+                          </div>
+                          <span className="material-symbols-outlined text-text-tertiary">chevron_right</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+              
+              {habits.length === 0 && (
+                <div className="text-center py-8">
+                  <span className="material-symbols-outlined text-4xl text-text-tertiary mb-2">repeat</span>
+                  <p className="text-sm text-text-tertiary">No habits available</p>
+                  <p className="text-xs text-text-tertiary mt-1">Create a new habit to get started</p>
+                </div>
+              )}
+            </div>
+            
+            <div className="sticky bottom-0 bg-background border-t border-gray-200 px-6 py-4">
+              <button 
+                onClick={() => setActiveModal(null)}
+                className="w-full py-3 bg-gray-100 text-text-main font-bold rounded-xl hover:bg-gray-200"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
