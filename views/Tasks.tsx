@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { EntityType, View } from '../types';
 import { TopNav } from '../components/TopNav';
+import { EntityFilter, FilterState } from '../components/EntityFilter';
 
 interface TasksProps {
   onEdit: (type: EntityType, id?: string) => void;
@@ -14,6 +15,7 @@ export const Tasks: React.FC<TasksProps> = ({ onEdit, onNavigate, onMenuClick, o
   const { tasks, habits, friends, updateTask, updateHabit, addTask, keyResults, updateKeyResult } = useData();
   const [activeModal, setActiveModal] = useState<'addTask' | 'addHabit' | null>(null);
   const [referenceDate, setReferenceDate] = useState(new Date());
+  const [filters, setFilters] = useState<FilterState>({});
 
   // Date Helpers
   const getStartOfWeek = (date: Date) => {
@@ -129,7 +131,7 @@ export const Tasks: React.FC<TasksProps> = ({ onEdit, onNavigate, onMenuClick, o
       <main className="flex-1 overflow-y-auto no-scrollbar px-5 pb-24 pt-2">
         
         {/* Functional Date Selector */}
-        <div className="flex items-center justify-between bg-white rounded-xl p-2 mb-6 border border-slate-100 shadow-sm mt-2">
+        <div className="flex items-center justify-between bg-white rounded-xl p-2 mb-4 border border-slate-100 shadow-sm mt-2">
              <button onClick={() => changeWeek(-1)} className="p-1 hover:bg-gray-100 rounded-lg transition-colors">
                 <span className="material-symbols-outlined text-gray-400">chevron_left</span>
              </button>
@@ -141,10 +143,29 @@ export const Tasks: React.FC<TasksProps> = ({ onEdit, onNavigate, onMenuClick, o
              </button>
         </div>
 
+        {/* Entity Filter */}
+        <div className="mb-6">
+          <EntityFilter
+            entityType="task"
+            filters={filters}
+            onFiltersChange={setFilters}
+            showLinkedOnly={true}
+            showUnlinkedOnly={true}
+          />
+        </div>
+
         <section className="mb-8">
-            <h3 className="text-xs font-bold text-text-tertiary uppercase tracking-widest mb-3 pl-1">My Habits</h3>
+            <h3 className="text-xs font-bold text-text-tertiary uppercase tracking-widest mb-3 pl-1">
+              My Habits {filteredHabits.length !== habits.length && `(${filteredHabits.length}/${habits.length})`}
+            </h3>
             <div className="space-y-3">
-                {habits.map(habit => {
+                {filteredHabits.length === 0 ? (
+                  <div className="text-center py-8 bg-white rounded-2xl border border-slate-100">
+                    <span className="material-symbols-outlined text-4xl text-text-tertiary mb-2">filter_list</span>
+                    <p className="text-sm text-text-tertiary">Geen habits gevonden met deze filters</p>
+                  </div>
+                ) : (
+                  filteredHabits.map(habit => {
                         // Calculate percentage based on days PASSED
                         let daysPassed = 0;
                         let completionCount = 0;
@@ -220,7 +241,8 @@ export const Tasks: React.FC<TasksProps> = ({ onEdit, onNavigate, onMenuClick, o
                             </div>
                         </div>
                         )
-                })}
+                  })
+                )}
                 
                 {/* Add Habit Button */}
                 <button
@@ -249,8 +271,16 @@ export const Tasks: React.FC<TasksProps> = ({ onEdit, onNavigate, onMenuClick, o
         </div>
 
         <section className="space-y-1">
-           {tasks.length === 0 && <div className="text-center text-text-tertiary py-4 text-sm">No tasks for today.</div>}
-          {tasks.map((task, i) => (
+           {filteredTasks.length === 0 && tasks.length > 0 && (
+             <div className="text-center py-8 bg-white rounded-2xl border border-slate-100">
+               <span className="material-symbols-outlined text-4xl text-text-tertiary mb-2">filter_list</span>
+               <p className="text-sm text-text-tertiary">Geen tasks gevonden met deze filters</p>
+             </div>
+           )}
+           {filteredTasks.length === 0 && tasks.length === 0 && (
+             <div className="text-center text-text-tertiary py-4 text-sm">No tasks for today.</div>
+           )}
+          {filteredTasks.map((task, i) => (
             <div key={task.id} className="group flex items-start gap-3 p-3 rounded-lg hover:bg-white/60 transition-colors border border-transparent hover:border-slate-200">
               <label className="relative flex items-center justify-center pt-1 cursor-pointer">
                 <input 
@@ -308,10 +338,10 @@ export const Tasks: React.FC<TasksProps> = ({ onEdit, onNavigate, onMenuClick, o
           </button>
           
           <div className="pt-8 pb-4 text-center opacity-60">
-            <div className={`inline-flex items-center justify-center p-3 mb-2 rounded-full transition-colors ${completedCount === tasks.length && tasks.length > 0 ? 'bg-primary/20 text-primary' : 'bg-slate-200 text-slate-400'}`}>
+            <div className={`inline-flex items-center justify-center p-3 mb-2 rounded-full transition-colors ${completedCount === filteredTasks.length && filteredTasks.length > 0 ? 'bg-primary/20 text-primary' : 'bg-slate-200 text-slate-400'}`}>
               <span className="material-symbols-outlined">check_circle</span>
             </div>
-            <p className="text-xs text-text-tertiary font-medium">{completedCount} / {tasks.length} tasks completed today</p>
+            <p className="text-xs text-text-tertiary font-medium">{completedCount} / {filteredTasks.length} tasks completed today</p>
           </div>
         </section>
       </main>

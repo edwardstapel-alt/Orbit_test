@@ -19,7 +19,8 @@ export enum View {
   CALENDAR = 'CALENDAR', // Calendar view
   GOAL_TIMELINE = 'GOAL_TIMELINE', // Goal Timeline (Gantt)
   TODAY = 'TODAY', // Enhanced Today view
-  DAY_PARTS_SETTINGS = 'DAY_PARTS_SETTINGS' // Day Parts Configuration
+  DAY_PARTS_SETTINGS = 'DAY_PARTS_SETTINGS', // Day Parts Configuration
+  STATISTICS = 'STATISTICS' // Statistics Dashboard
 }
 
 export type EntityType = 'task' | 'habit' | 'friend' | 'objective' | 'keyResult' | 'place' | 'lifeArea' | 'vision' | 'timeSlot';
@@ -40,6 +41,11 @@ export interface Friend {
   image: string;
   lastSeen: string;
   location?: string;
+  // Sync fields
+  syncMetadata?: SyncMetadata;
+  googleContactId?: string; // Google Contact ID
+  email?: string; // Email from Google Contacts
+  phone?: string; // Phone from Google Contacts
 }
 
 export interface TeamMember {
@@ -47,6 +53,19 @@ export interface TeamMember {
   name: string;
   role: string;
   image: string;
+}
+
+// Sync Metadata
+export interface SyncMetadata {
+  lastSyncedAt?: string; // ISO timestamp
+  syncStatus: 'synced' | 'pending' | 'conflict' | 'error';
+  externalId?: string; // ID in external service
+  externalService: 'google_calendar' | 'google_tasks' | 'google_contacts' | 'asana';
+  conflictDetails?: {
+    field: string;
+    appValue: any;
+    externalValue: any;
+  }[];
 }
 
 export interface Task {
@@ -70,6 +89,10 @@ export interface Task {
   calendarEventId?: string; // Voor Google Calendar sync
   // Relationship fields
   friendId?: string; // Link naar Friend (My Orbit)
+  // Sync fields
+  syncMetadata?: SyncMetadata;
+  googleTaskId?: string; // Google Tasks ID
+  asanaTaskId?: string; // Asana Task ID
 }
 
 export interface Habit {
@@ -188,6 +211,10 @@ export interface TimeSlot {
     frequency: 'daily' | 'weekly' | 'monthly';
     endDate?: string;
   };
+  // Sync fields
+  syncMetadata?: SyncMetadata;
+  googleCalendarEventId?: string; // Google Calendar Event ID
+  recurringEventId?: string; // For recurring events
 }
 
 export interface DayPart {
@@ -297,4 +324,10 @@ export interface DataContextType {
 
   clearAllData: () => void;
   restoreExampleData: () => void;
+  
+  // Sync service functions
+  getSyncQueueStatus: () => { queueLength: number; isProcessing: boolean; items: any[] };
+  triggerSync: () => Promise<void>;
+  getSyncConfig: () => any;
+  updateSyncConfig: (config: Partial<any>) => void;
 }

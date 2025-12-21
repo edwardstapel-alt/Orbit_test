@@ -10,7 +10,7 @@ interface EditorProps {
   contextObjectiveId?: string; // For linking habits to objectives
   contextLifeAreaId?: string; // For linking habits to life areas
   onClose: () => void;
-  onNavigate?: (view: any) => void; // For navigation after save
+  onNavigate?: (view: View, objectiveId?: string, lifeAreaId?: string) => void; // For navigation after save
   onEdit?: (type: EntityType, id?: string, parentId?: string) => void; // For creating related items
 }
 
@@ -242,10 +242,9 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
       // If creating a new Objective, navigate to detail view where user can add key results
       if (!editId && onNavigate) {
         const newObjectiveId = newItem.id;
-        localStorage.setItem('orbit_selectedObjectiveId', newObjectiveId);
         onClose();
         setTimeout(() => {
-          onNavigate(View.OBJECTIVE_DETAIL);
+          onNavigate(View.OBJECTIVE_DETAIL, newObjectiveId);
         }, 100);
         return;
       }
@@ -301,10 +300,9 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
       // If creating a new Life Area, navigate to detail view where user can add goals/key results
       if (!editId && onNavigate) {
         const newLifeAreaId = lifeAreaData.id;
-        localStorage.setItem('orbit_selectedLifeArea', newLifeAreaId);
         onClose();
         setTimeout(() => {
-          onNavigate(View.LIFE_AREA_DETAIL);
+          onNavigate(View.LIFE_AREA_DETAIL, undefined, newLifeAreaId);
         }, 100);
         return;
       }

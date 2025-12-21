@@ -4,7 +4,7 @@ import { View } from '../types';
 import { TopNav } from '../components/TopNav';
 
 interface LifeAreasProps {
-  onNavigate: (view: View) => void;
+  onNavigate: (view: View, lifeAreaId?: string) => void;
   onMenuClick: () => void;
   onProfileClick: () => void;
   onSearchClick?: () => void;
@@ -15,9 +15,7 @@ export const LifeAreas: React.FC<LifeAreasProps> = ({ onNavigate, onMenuClick, o
   const { lifeAreas, objectives, tasks } = useData();
 
   const handleLifeAreaClick = (lifeAreaId: string) => {
-    onNavigate(View.LIFE_AREA_DETAIL);
-    // We kunnen later de selected life area doorgeven via context of state
-    localStorage.setItem('orbit_selectedLifeArea', lifeAreaId);
+    onNavigate(View.LIFE_AREA_DETAIL, lifeAreaId);
   };
 
   return (

@@ -4,7 +4,7 @@ import { Task, Habit, Objective, KeyResult, LifeArea, TimeSlot, View } from '../
 
 interface UnifiedSearchProps {
   onClose: () => void;
-  onNavigate?: (view: View) => void;
+  onNavigate?: (view: View, lifeAreaId?: string) => void;
   onEdit?: (type: 'task' | 'habit' | 'objective' | 'keyResult' | 'lifeArea' | 'timeSlot', id?: string, parentId?: string, context?: { objectiveId?: string; lifeAreaId?: string }) => void;
   onViewObjective?: (id: string) => void;
 }
@@ -148,9 +148,8 @@ export const UnifiedSearch: React.FC<UnifiedSearchProps> = ({
     if (result.type === 'objective' && onViewObjective) {
       onViewObjective(result.id);
     } else if (result.type === 'lifeArea' && onNavigate) {
-      onNavigate(View.LIFE_AREA_DETAIL);
-      // Store the lifeAreaId for the detail view to use
-      localStorage.setItem('orbit_selectedLifeArea', result.id);
+      // Navigate with lifeAreaId as second parameter
+      onNavigate(View.LIFE_AREA_DETAIL, result.id);
     } else if (onEdit) {
       onEdit(result.type, result.id);
     }

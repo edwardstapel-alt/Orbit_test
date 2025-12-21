@@ -65,10 +65,10 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentView, onNavigate })
         </button>
 
         <button 
-          onClick={() => onNavigate(View.RELATIONSHIPS)}
-          className={`flex flex-col items-center justify-center size-14 rounded-full transition-colors ${getIconClass(View.RELATIONSHIPS)}`}
+          onClick={() => onNavigate(View.STATISTICS)}
+          className={`flex flex-col items-center justify-center size-14 rounded-full transition-colors ${getIconClass(View.STATISTICS)}`}
         >
-          <span className={`material-symbols-outlined text-[26px] ${isFilled(View.RELATIONSHIPS)}`}>person</span>
+          <span className={`material-symbols-outlined text-[26px] ${isFilled(View.STATISTICS)}`}>bar_chart</span>
         </button>
 
       </div>

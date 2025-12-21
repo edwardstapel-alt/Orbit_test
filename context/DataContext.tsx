@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Task, Habit, Friend, Objective, KeyResult, Place, TeamMember, DataContextType, UserProfile, LifeArea, Vision, TimeSlot, DayPart, StatusUpdate } from '../types';
+import { syncService } from '../utils/syncService';
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
@@ -339,9 +340,24 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const updateUserProfile = (profile: Partial<UserProfile>) => setUserProfile(prev => ({ ...prev, ...profile }));
 
-  const addTask = (item: Task) => setTasks([...tasks, item]);
-  const updateTask = (item: Task) => setTasks(tasks.map(t => t.id === item.id ? item : t));
-  const deleteTask = (id: string) => setTasks(tasks.filter(t => t.id !== id));
+  const addTask = (item: Task) => {
+    setTasks([...tasks, item]);
+    // Auto-sync to Google Tasks
+    syncService.queueSync('task', 'create', item.id, item);
+  };
+  const updateTask = (item: Task) => {
+    setTasks(tasks.map(t => t.id === item.id ? item : t));
+    // Auto-sync to Google Tasks
+    syncService.queueSync('task', 'update', item.id, item);
+  };
+  const deleteTask = (id: string) => {
+    setTasks(tasks.filter(t => t.id !== id));
+    // Auto-sync delete to Google Tasks
+    const task = tasks.find(t => t.id === id);
+    if (task) {
+      syncService.queueSync('task', 'delete', id, null);
+    }
+  };
 
   const addHabit = (item: Habit) => {
     const newItem = {
@@ -410,9 +426,24 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const updateVision = (item: Vision) => setVisions(visions.map(v => v.id === item.id ? item : v));
   const deleteVision = (id: string) => setVisions(visions.filter(v => v.id !== id));
 
-  const addTimeSlot = (item: TimeSlot) => setTimeSlots([...timeSlots, item]);
-  const updateTimeSlot = (item: TimeSlot) => setTimeSlots(timeSlots.map(ts => ts.id === item.id ? item : ts));
-  const deleteTimeSlot = (id: string) => setTimeSlots(timeSlots.filter(ts => ts.id !== id));
+  const addTimeSlot = (item: TimeSlot) => {
+    setTimeSlots([...timeSlots, item]);
+    // Auto-sync to Google Calendar
+    syncService.queueSync('timeSlot', 'create', item.id, item);
+  };
+  const updateTimeSlot = (item: TimeSlot) => {
+    setTimeSlots(timeSlots.map(ts => ts.id === item.id ? item : ts));
+    // Auto-sync to Google Calendar
+    syncService.queueSync('timeSlot', 'update', item.id, item);
+  };
+  const deleteTimeSlot = (id: string) => {
+    setTimeSlots(timeSlots.filter(ts => ts.id !== id));
+    // Auto-sync delete to Google Calendar
+    const timeSlot = timeSlots.find(ts => ts.id === id);
+    if (timeSlot) {
+      syncService.queueSync('timeSlot', 'delete', id, null);
+    }
+  };
 
   const updateDayPart = (item: DayPart) => {
     // If item doesn't exist, add it; otherwise update it
@@ -615,7 +646,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       getHabitsByLifeArea, getKeyResultsByObjective, getTimeSlotsByObjective, getTimeSlotsByLifeArea,
       getObjectivesByKeyResult, getLifeAreaByObjective,
       setAccentColor, setDarkMode, setShowCategory,
-      clearAllData, restoreExampleData
+      clearAllData, restoreExampleData,
+      // Sync service functions
+      getSyncQueueStatus: () => syncService.getQueueStatus(),
+      triggerSync: async () => { await syncService.triggerSync(); },
+      getSyncConfig: () => syncService.getConfig(),
+      updateSyncConfig: (config: Partial<any>) => syncService.updateConfig(config)
     }}>
       {children}
     </DataContext.Provider>

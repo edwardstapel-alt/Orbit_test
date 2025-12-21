@@ -1,5 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
+import { 
+  isGoogleConnected, 
+  getAccessToken,
+  exportTimeSlotToCalendar,
+  exportTaskToCalendar,
+  exportGoalDeadlineToCalendar,
+  exportTaskToGoogleTasks,
+  exportFriendToGoogleContacts,
+  importGoogleContacts,
+  getGoogleTaskLists
+} from '../utils/googleSync';
 
 declare global {
     interface Window {
@@ -13,7 +24,21 @@ interface SyncedAccountsProps {
 }
 
 export const SyncedAccounts: React.FC<SyncedAccountsProps> = ({ onBack }) => {
-  const { updateUserProfile, addTask, tasks } = useData();
+  const { 
+    updateUserProfile, 
+    addTask, 
+    tasks, 
+    timeSlots, 
+    objectives, 
+    friends,
+    updateTask,
+    updateTimeSlot,
+    updateObjective,
+    updateFriend,
+    addFriend,
+    getSyncQueueStatus,
+    triggerSync
+  } = useData();
   const [googleConnected, setGoogleConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [clientId, setClientId] = useState('388457113122-gb1safn47js2k3rbpb2tsue52n960rsh.apps.googleusercontent.com');
@@ -23,7 +48,8 @@ export const SyncedAccounts: React.FC<SyncedAccountsProps> = ({ onBack }) => {
   const [googleApiLoaded, setGoogleApiLoaded] = useState(false);
   
   // Scopes for People (Profile, Email, DOB), Calendar, and Tasks
-  const SCOPES = 'https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/user.birthday.read https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/tasks.readonly';
+  // Note: calendar and tasks now have write access for bi-directional sync
+  const SCOPES = 'https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/user.birthday.read https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/tasks https://www.googleapis.com/auth/contacts';
 
   useEffect(() => {
     // Set current origin for help text
@@ -122,7 +148,7 @@ export const SyncedAccounts: React.FC<SyncedAccountsProps> = ({ onBack }) => {
                 ontimeout: reject
               });
             });
-            await window.gapi.client.init({});
+        await window.gapi.client.init({});
           } catch (gapiError) {
             console.warn('GAPI initialization failed, continuing with direct API calls:', gapiError);
           }
@@ -158,7 +184,7 @@ export const SyncedAccounts: React.FC<SyncedAccountsProps> = ({ onBack }) => {
         }
         
         // Extract date of birth
-        let dob = '';
+            let dob = '';
         if (profileData.birthdays && profileData.birthdays.length > 0) {
             const birthday = profileData.birthdays[0];
             // Check if it's a date object (has year, month, day)
@@ -198,22 +224,22 @@ export const SyncedAccounts: React.FC<SyncedAccountsProps> = ({ onBack }) => {
           const calData = await calRes.json();
           
           if (calData.items && calData.items.length > 0) {
-               calData.items.forEach((event: any) => {
+             calData.items.forEach((event: any) => {
                    const startTime = event.start?.dateTime || event.start?.date;
                    const eventTitle = event.summary || 'Geen titel';
                    // Avoid duplicates by checking ID
                    if (startTime && !tasks.some(t => t.id === `cal-${event.id}`)) {
                        const eventDate = new Date(startTime);
-                       addTask({
-                           id: `cal-${event.id}`,
+                     addTask({
+                         id: `cal-${event.id}`,
                            title: eventTitle,
-                           tag: 'Meeting',
+                         tag: 'Meeting',
                            time: eventDate.toLocaleTimeString('nl-NL', {hour: '2-digit', minute:'2-digit'}),
-                           completed: false,
-                           priority: false
-                       });
-                   }
-               });
+                         completed: false,
+                         priority: false
+                     });
+                 }
+             });
           }
         } else {
           console.warn('Calendar API error:', calRes.status, calRes.statusText);
@@ -229,19 +255,19 @@ export const SyncedAccounts: React.FC<SyncedAccountsProps> = ({ onBack }) => {
           const tasksData = await tasksRes.json();
           
           if (tasksData.items && tasksData.items.length > 0) {
-              tasksData.items.forEach((t: any) => {
+            tasksData.items.forEach((t: any) => {
                   const taskTitle = t.title || 'Geen titel';
                   if (!tasks.some(existing => existing.id === `gtask-${t.id}`)) {
-                       addTask({
-                           id: `gtask-${t.id}`,
+                     addTask({
+                         id: `gtask-${t.id}`,
                            title: taskTitle,
-                           tag: 'Work',
-                           time: 'Anytime',
-                           completed: false,
-                           priority: false
-                       });
-                  }
-              });
+                         tag: 'Work',
+                         time: 'Anytime',
+                         completed: false,
+                         priority: false
+                     });
+                }
+            });
           }
         } else {
           console.warn('Tasks API error:', tasksRes.status, tasksRes.statusText);
@@ -409,26 +435,390 @@ export const SyncedAccounts: React.FC<SyncedAccountsProps> = ({ onBack }) => {
 
         {googleConnected && (
             <div className="space-y-4 animate-fade-in-up">
-                <h3 className="text-xs font-bold text-text-tertiary uppercase tracking-widest pl-1">Gegevensbron Status</h3>
-                <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-                     {[
-                         { id: 'profile', label: 'People API', icon: 'badge', desc: 'Naam, Foto, Verjaardag' },
-                         { id: 'calendar', label: 'Calendar API', icon: 'calendar_month', desc: 'Aankomende 7 Dagen' },
-                         { id: 'tasks', label: 'Tasks API', icon: 'check_circle', desc: 'Standaard Takenlijst' },
-                     ].map((item) => (
-                         <div key={item.id} className="flex items-center justify-between p-4 border-b border-gray-100 last:border-0">
-                             <div className="flex items-center gap-3">
-                                 <div className="size-10 rounded-full bg-slate-50 flex items-center justify-center text-text-secondary">
-                                     <span className="material-symbols-outlined">{item.icon}</span>
+                <h3 className="text-xs font-bold text-text-tertiary uppercase tracking-widest pl-1">Automatische Sync</h3>
+                
+                {/* Auto-Sync Status */}
+                <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-slate-100">
+                    <div className="p-4 border-b border-gray-100">
+                        <div className="flex items-center gap-3 mb-3">
+                            <div className="size-10 rounded-full bg-teal-50 flex items-center justify-center text-teal-600">
+                                <span className="material-symbols-outlined">sync</span>
+                            </div>
+                            <div className="flex-1">
+                                <p className="text-sm font-bold text-text-main">Automatische Synchronisatie</p>
+                                <p className="text-[10px] text-text-tertiary">Sync automatisch bij wijzigingen</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-sm font-semibold text-text-main">Auto-sync ingeschakeld</p>
+                                <p className="text-[10px] text-text-tertiary">Taken, Time Slots en Goals worden automatisch gesynchroniseerd</p>
+                            </div>
+                            <span className="material-symbols-outlined text-green-500 text-2xl">check_circle</span>
+                        </div>
+                        <div className="pt-2 border-t border-gray-100">
+                            <p className="text-xs text-text-tertiary mb-2">Sync Queue Status:</p>
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm font-bold text-text-main">
+                                    {(() => {
+                                        const status = getSyncQueueStatus();
+                                        return status.queueLength > 0 ? `${status.queueLength} items in queue` : 'Alles gesynchroniseerd';
+                                    })()}
+                                </span>
+                                {(() => {
+                                    const status = getSyncQueueStatus();
+                                    if (status.isProcessing) {
+                                        return <span className="material-symbols-outlined animate-spin text-primary text-lg">sync</span>;
+                                    }
+                                    return null;
+                                })()}
+                            </div>
+                        </div>
+                        <button
+                            onClick={async () => {
+                                try {
+                                    await triggerSync();
+                                    alert('Sync handmatig getriggerd');
+                                } catch (error: any) {
+                                    alert(`Sync fout: ${error.message}`);
+                                }
+                            }}
+                            disabled={isLoading}
+                            className="w-full py-2 px-4 bg-teal-600 hover:bg-teal-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-colors text-sm flex items-center justify-center gap-2"
+                        >
+                            <span className="material-symbols-outlined text-base">refresh</span>
+                            Handmatig Sync Nu
+                        </button>
+                    </div>
+                </div>
+                
+                <h3 className="text-xs font-bold text-text-tertiary uppercase tracking-widest pl-1">Handmatige Export</h3>
+                
+                {/* Export to Google Calendar */}
+                <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-slate-100">
+                    <div className="p-4 border-b border-gray-100">
+                        <div className="flex items-center gap-3 mb-3">
+                            <div className="size-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
+                                <span className="material-symbols-outlined">calendar_month</span>
+                            </div>
+                            <div className="flex-1">
+                                <p className="text-sm font-bold text-text-main">Google Calendar</p>
+                                <p className="text-[10px] text-text-tertiary">Export Time Slots, Tasks & Goal Deadlines</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="p-4 space-y-2">
+                        <button
+                            onClick={async () => {
+                                const token = getAccessToken();
+                                if (!token) {
+                                    alert('Niet verbonden met Google. Verbind opnieuw.');
+                                    return;
+                                }
+                                setIsLoading(true);
+                                setSyncStatus('Time Slots exporteren...');
+                                let exported = 0;
+                                let errors = 0;
+                                for (const timeSlot of timeSlots) {
+                                    const result = await exportTimeSlotToCalendar(timeSlot, token);
+                                    if (result.success && result.eventId) {
+                                        updateTimeSlot({ ...timeSlot, googleCalendarEventId: result.eventId });
+                                        exported++;
+                                    } else {
+                                        errors++;
+                                    }
+                                }
+                                setSyncStatus(`${exported} Time Slots geëxporteerd${errors > 0 ? `, ${errors} fouten` : ''}`);
+                                setTimeout(() => setIsLoading(false), 2000);
+                            }}
+                            disabled={isLoading || timeSlots.length === 0}
+                            className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-colors text-sm flex items-center justify-center gap-2"
+                        >
+                            <span className="material-symbols-outlined text-base">upload</span>
+                            Export Time Slots ({timeSlots.length})
+                        </button>
+                        <button
+                            onClick={async () => {
+                                const token = getAccessToken();
+                                if (!token) {
+                                    alert('Niet verbonden met Google. Verbind opnieuw.');
+                                    return;
+                                }
+                                setIsLoading(true);
+                                setSyncStatus('Tasks exporteren...');
+                                const tasksWithDate = tasks.filter(t => t.scheduledDate);
+                                let exported = 0;
+                                let errors = 0;
+                                for (const task of tasksWithDate) {
+                                    const result = await exportTaskToCalendar(task, token);
+                                    if (result.success && result.eventId) {
+                                        updateTask({ ...task, calendarEventId: result.eventId });
+                                        exported++;
+                                    } else {
+                                        errors++;
+                                    }
+                                }
+                                setSyncStatus(`${exported} Tasks geëxporteerd${errors > 0 ? `, ${errors} fouten` : ''}`);
+                                setTimeout(() => setIsLoading(false), 2000);
+                            }}
+                            disabled={isLoading || tasks.filter(t => t.scheduledDate).length === 0}
+                            className="w-full py-2.5 px-4 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-colors text-sm flex items-center justify-center gap-2"
+                        >
+                            <span className="material-symbols-outlined text-base">upload</span>
+                            Export Tasks ({tasks.filter(t => t.scheduledDate).length})
+                        </button>
+                        <button
+                            onClick={async () => {
+                                const token = getAccessToken();
+                                if (!token) {
+                                    alert('Niet verbonden met Google. Verbind opnieuw.');
+                                    return;
+                                }
+                                setIsLoading(true);
+                                setSyncStatus('Goal Deadlines exporteren...');
+                                const goalsWithDeadline = objectives.filter(o => o.endDate);
+                                let exported = 0;
+                                let errors = 0;
+                                for (const goal of goalsWithDeadline) {
+                                    const result = await exportGoalDeadlineToCalendar(goal, token);
+                                    if (result.success) {
+                                        exported++;
+                                    } else {
+                                        errors++;
+                                    }
+                                }
+                                setSyncStatus(`${exported} Deadlines geëxporteerd${errors > 0 ? `, ${errors} fouten` : ''}`);
+                                setTimeout(() => setIsLoading(false), 2000);
+                            }}
+                            disabled={isLoading || objectives.filter(o => o.endDate).length === 0}
+                            className="w-full py-2.5 px-4 bg-blue-400 hover:bg-blue-500 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-colors text-sm flex items-center justify-center gap-2"
+                        >
+                            <span className="material-symbols-outlined text-base">event</span>
+                            Export Goal Deadlines ({objectives.filter(o => o.endDate).length})
+                        </button>
+                    </div>
+                </div>
+
+                {/* Export to Google Tasks */}
+                <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-slate-100">
+                    <div className="p-4 border-b border-gray-100">
+                        <div className="flex items-center gap-3 mb-3">
+                            <div className="size-10 rounded-full bg-green-50 flex items-center justify-center text-green-600">
+                                <span className="material-symbols-outlined">check_circle</span>
+                            </div>
+                            <div className="flex-1">
+                                <p className="text-sm font-bold text-text-main">Google Tasks</p>
+                                <p className="text-[10px] text-text-tertiary">Export App Tasks naar Google Tasks</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="p-4 space-y-2">
+                        <button
+                            onClick={async () => {
+                                const token = getAccessToken();
+                                if (!token) {
+                                    alert('Niet verbonden met Google. Verbind opnieuw.');
+                                    return;
+                                }
+                                
+                                // First, test if we can access task lists
+                                const taskListsResult = await getGoogleTaskLists(token);
+                                if (!taskListsResult.success) {
+                                    alert(`Kan geen toegang krijgen tot Google Tasks:\n${taskListsResult.error}\n\nControleer of de Tasks API is ingeschakeld en je de juiste permissies hebt.`);
+                                    return;
+                                }
+                                
+                                setIsLoading(true);
+                                setSyncStatus('Tasks exporteren naar Google Tasks...');
+                                let exported = 0;
+                                let errors = 0;
+                                const errorMessages: string[] = [];
+                                
+                                if (tasks.length === 0) {
+                                    alert('Geen taken om te exporteren.');
+                                    setIsLoading(false);
+                                    return;
+                                }
+                                
+                                for (let i = 0; i < tasks.length; i++) {
+                                    const task = tasks[i];
+                                    
+                                    try {
+                                        const result = await exportTaskToGoogleTasks(task, token);
+                                        
+                                        if (result.success && result.taskId) {
+                                            updateTask({ ...task, googleTaskId: result.taskId });
+                                            exported++;
+                                        } else {
+                                            errors++;
+                                            if (result.error) {
+                                                errorMessages.push(`${task.title}: ${result.error}`);
+                                            }
+                                        }
+                                    } catch (error: any) {
+                                        errors++;
+                                        errorMessages.push(`${task.title}: ${error.message || 'Unknown error'}`);
+                                    }
+                                    
+                                    // Small delay to avoid rate limiting
+                                    if (i < tasks.length - 1) {
+                                        await new Promise(resolve => setTimeout(resolve, 100));
+                                    }
+                                }
+                                
+                                let statusMsg = `${exported} Tasks geëxporteerd`;
+                                if (errors > 0) {
+                                    statusMsg += `, ${errors} fouten`;
+                                }
+                                setSyncStatus(statusMsg);
+                                
+                                if (errors > 0 && errorMessages.length > 0) {
+                                    alert(`Export voltooid met fouten:\n\n${errorMessages.slice(0, 5).join('\n')}${errorMessages.length > 5 ? `\n...en ${errorMessages.length - 5} meer` : ''}`);
+                                } else if (exported > 0) {
+                                    alert(`✓ ${exported} task(s) succesvol geëxporteerd naar Google Tasks!`);
+                                }
+                                
+                                setTimeout(() => setIsLoading(false), 2000);
+                            }}
+                            disabled={isLoading || tasks.length === 0}
+                            className="w-full py-2.5 px-4 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-colors text-sm flex items-center justify-center gap-2"
+                        >
+                            <span className="material-symbols-outlined text-base">upload</span>
+                            Export Tasks ({tasks.length})
+                        </button>
+                    </div>
+                </div>
+
+                {/* Google Contacts Sync */}
+                <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-slate-100">
+                    <div className="p-4 border-b border-gray-100">
+                        <div className="flex items-center gap-3 mb-3">
+                            <div className="size-10 rounded-full bg-purple-50 flex items-center justify-center text-purple-600">
+                                <span className="material-symbols-outlined">contacts</span>
+                            </div>
+                            <div className="flex-1">
+                                <p className="text-sm font-bold text-text-main">Google Contacts</p>
+                                <p className="text-[10px] text-text-tertiary">Import & Export Contacts</p>
                                  </div>
-                                 <div>
-                                     <p className="text-sm font-bold text-text-main">{item.label}</p>
-                                     <p className="text-[10px] text-text-tertiary">{item.desc}</p>
                                  </div>
                              </div>
-                             <span className="material-symbols-outlined text-green-500">sync_alt</span>
+                    <div className="p-4 space-y-2">
+                        <button
+                            onClick={async () => {
+                                const token = getAccessToken();
+                                if (!token) {
+                                    alert('Niet verbonden met Google. Verbind opnieuw.');
+                                    return;
+                                }
+                                setIsLoading(true);
+                                setSyncStatus('Contacts importeren...');
+                                
+                                try {
+                                    const result = await importGoogleContacts(token);
+                                    if (result.success && result.contacts) {
+                                        let imported = 0;
+                                        let skipped = 0;
+                                        
+                                        for (const contact of result.contacts) {
+                                            try {
+                                                const name = contact.names?.[0];
+                                                const email = contact.emailAddresses?.[0]?.value;
+                                                const phone = contact.phoneNumbers?.[0]?.value;
+                                                const photo = contact.photos?.[0]?.url;
+                                                const contactId = contact.resourceName;
+                                                
+                                                // Skip if no name
+                                                if (!name || (!name.givenName && !name.familyName)) {
+                                                    skipped++;
+                                                    continue;
+                                                }
+                                                
+                                                // Check if already exists
+                                                if (friends.some(f => f.googleContactId === contactId)) {
+                                                    skipped++;
+                                                    continue;
+                                                }
+                                                
+                                                const fullName = `${name.givenName || ''} ${name.familyName || ''}`.trim();
+                                                if (!fullName) {
+                                                    skipped++;
+                                                    continue;
+                                                }
+                                                
+                                                addFriend({
+                                                    id: `contact-${contactId.replace(/[^a-zA-Z0-9]/g, '-')}`,
+                                                    name: fullName,
+                                                    role: contact.biographies?.[0]?.value || 'Contact',
+                                                    roleType: 'friend',
+                                                    image: photo || '',
+                                                    lastSeen: new Date().toISOString(),
+                                                    googleContactId: contactId,
+                                                    email: email,
+                                                    phone: phone,
+                                                });
+                                                imported++;
+                                            } catch (contactError: any) {
+                                                console.error('Error processing contact:', contactError);
+                                                skipped++;
+                                            }
+                                        }
+                                        
+                                        setSyncStatus(`${imported} Contacts geïmporteerd${skipped > 0 ? `, ${skipped} overgeslagen` : ''}`);
+                                        
+                                        if (imported === 0 && skipped > 0) {
+                                            alert(`Geen nieuwe contacts geïmporteerd. ${skipped} contacts waren al aanwezig of hadden geen naam.`);
+                                        }
+                                    } else {
+                                        const errorMsg = result.error || 'Onbekende fout';
+                                        setSyncStatus(`Fout: ${errorMsg}`);
+                                        alert(`Import mislukt: ${errorMsg}\n\nControleer of de Contacts API is ingeschakeld in Google Cloud Console.`);
+                                    }
+                                } catch (error: any) {
+                                    console.error('Import error:', error);
+                                    setSyncStatus(`Fout: ${error.message || 'Onbekende fout'}`);
+                                    alert(`Import mislukt: ${error.message || 'Onbekende fout'}`);
+                                }
+                                
+                                setTimeout(() => setIsLoading(false), 2000);
+                            }}
+                            disabled={isLoading}
+                            className="w-full py-2.5 px-4 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-colors text-sm flex items-center justify-center gap-2"
+                        >
+                            <span className="material-symbols-outlined text-base">download</span>
+                            Import Contacts
+                        </button>
+                        <button
+                            onClick={async () => {
+                                const token = getAccessToken();
+                                if (!token) {
+                                    alert('Niet verbonden met Google. Verbind opnieuw.');
+                                    return;
+                                }
+                                setIsLoading(true);
+                                setSyncStatus('Friends exporteren...');
+                                let exported = 0;
+                                let errors = 0;
+                                for (const friend of friends) {
+                                    const result = await exportFriendToGoogleContacts(friend, token);
+                                    if (result.success && result.contactId) {
+                                        updateFriend({ ...friend, googleContactId: result.contactId });
+                                        exported++;
+                                    } else {
+                                        errors++;
+                                    }
+                                }
+                                setSyncStatus(`${exported} Friends geëxporteerd${errors > 0 ? `, ${errors} fouten` : ''}`);
+                                setTimeout(() => setIsLoading(false), 2000);
+                            }}
+                            disabled={isLoading || friends.length === 0}
+                            className="w-full py-2.5 px-4 bg-purple-500 hover:bg-purple-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-colors text-sm flex items-center justify-center gap-2"
+                        >
+                            <span className="material-symbols-outlined text-base">upload</span>
+                            Export Friends ({friends.length})
+                        </button>
                          </div>
-                     ))}
                 </div>
             </div>
         )}

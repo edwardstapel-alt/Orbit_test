@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { EntityType, View, Task, Habit, TimeSlot } from '../types';
 import { TopNav } from '../components/TopNav';
+import { EntityFilter, FilterState } from '../components/EntityFilter';
 
 interface TodayProps {
   onEdit: (type: EntityType, id?: string, parentId?: string, context?: { objectiveId?: string; lifeAreaId?: string }) => void;
@@ -29,6 +30,7 @@ export const Today: React.FC<TodayProps> = ({ onEdit, onNavigate, onMenuClick, o
 
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [activeModal, setActiveModal] = useState<{ type: 'addTask', dayPartId?: string } | null>(null);
+  const [filters, setFilters] = useState<FilterState>({});
 
   // Format date as YYYY-MM-DD
   const todayString = useMemo(() => {
@@ -38,27 +40,58 @@ export const Today: React.FC<TodayProps> = ({ onEdit, onNavigate, onMenuClick, o
     return `${year}-${month}-${day}`;
   }, [selectedDate]);
 
-  // Get tasks for today
+  // Get tasks for today with filters
   const todayTasks = useMemo(() => {
     return tasks.filter(task => {
       // Task is for today if:
       // 1. It has scheduledDate matching today
       // 2. Or it has no scheduledDate (show all unscheduled tasks)
+      let matchesDate = false;
       if (task.scheduledDate) {
-        return task.scheduledDate === todayString;
+        matchesDate = task.scheduledDate === todayString;
+      } else {
+        // Show unscheduled tasks in "All Day" section
+        matchesDate = !task.completed;
       }
-      // Show unscheduled tasks in "All Day" section
-      return !task.completed;
-    });
-  }, [tasks, todayString]);
 
-  // Get habits for today
-  const todayHabits = useMemo(() => {
-    return habits.filter(habit => {
-      // Show all active habits
+      if (!matchesDate) return false;
+
+      // Apply entity filters
+      if (filters.lifeAreaId && task.lifeAreaId !== filters.lifeAreaId) return false;
+      if (filters.objectiveId && task.objectiveId !== filters.objectiveId) return false;
+      if (filters.keyResultId && task.keyResultId !== filters.keyResultId) return false;
+      
+      // Link status filters
+      if (filters.showLinkedOnly) {
+        if (!task.lifeAreaId && !task.objectiveId && !task.keyResultId) return false;
+      }
+      if (filters.showUnlinkedOnly) {
+        if (task.lifeAreaId || task.objectiveId || task.keyResultId) return false;
+      }
+      
       return true;
     });
-  }, [habits]);
+  }, [tasks, todayString, filters]);
+
+  // Get habits for today with filters
+  const todayHabits = useMemo(() => {
+    return habits.filter(habit => {
+      // Apply entity filters
+      if (filters.lifeAreaId && habit.lifeAreaId !== filters.lifeAreaId) return false;
+      if (filters.objectiveId && habit.objectiveId !== filters.objectiveId) return false;
+      if (filters.keyResultId && habit.linkedKeyResultId !== filters.keyResultId) return false;
+      
+      // Link status filters
+      if (filters.showLinkedOnly) {
+        if (!habit.lifeAreaId && !habit.objectiveId && !habit.linkedKeyResultId) return false;
+      }
+      if (filters.showUnlinkedOnly) {
+        if (habit.lifeAreaId || habit.objectiveId || habit.linkedKeyResultId) return false;
+      }
+      
+      return true;
+    });
+  }, [habits, filters]);
 
   // Get time slots for today
   const todayTimeSlots = useMemo(() => {
@@ -266,6 +299,17 @@ export const Today: React.FC<TodayProps> = ({ onEdit, onNavigate, onMenuClick, o
       </div>
 
       <main className="flex-1 overflow-y-auto no-scrollbar pb-32 px-6 pt-6">
+        {/* Entity Filter - Compact Icon Toggles */}
+        <div className="mb-3">
+          <EntityFilter
+            entityType="task"
+            filters={filters}
+            onFiltersChange={setFilters}
+            showLinkedOnly={true}
+            showUnlinkedOnly={true}
+          />
+        </div>
+
         {/* Date Navigation */}
         <div className="flex items-center justify-between mb-6">
           <button

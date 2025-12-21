@@ -40,6 +40,48 @@ export const QuickLinkSelector: React.FC<QuickLinkSelectorProps> = ({
   const [suggestions, setSuggestions] = useState<LinkingSuggestion[]>([]);
   const [showSuggestionsPanel, setShowSuggestionsPanel] = useState(false);
 
+  const hasAnyLinks = currentLinks.lifeAreaId || currentLinks.objectiveId || currentLinks.keyResultId;
+  const bestSuggestion = getBestSuggestion(suggestions);
+
+  // Auto-show panel if there are high confidence suggestions
+  useEffect(() => {
+    if (suggestions.length > 0 && !hasAnyLinks) {
+      const hasHighConfidence = suggestions.some(s => s.confidence === 'high');
+      if (hasHighConfidence && !showSuggestionsPanel) {
+        setShowSuggestionsPanel(true);
+      }
+    }
+  }, [suggestions, hasAnyLinks, showSuggestionsPanel]);
+
+  // Generate suggestions when component mounts or relevant data changes
+  useEffect(() => {
+    if (!showSuggestions) {
+      setSuggestions([]);
+      return;
+    }
+
+    const context: AutoLinkingContext = {
+      entityType,
+      entityTitle,
+      entityDescription,
+      entityDate,
+      entityTime,
+      existingLinks: currentLinks,
+      contextLifeAreaId,
+      contextObjectiveId
+    };
+
+    const newSuggestions = generateLinkingSuggestions(context, {
+      lifeAreas,
+      objectives,
+      keyResults,
+      tasks: tasks || [],
+      habits: habits || []
+    });
+
+    setSuggestions(newSuggestions);
+  }, [entityType, entityTitle, entityDescription, entityDate, entityTime, currentLinks, contextLifeAreaId, contextObjectiveId, lifeAreas, objectives, keyResults, tasks, habits, showSuggestions]);
+
   const handleLink = (type: 'lifeArea' | 'objective' | 'keyResult', id: string) => {
     const newLinks = { ...currentLinks };
     
@@ -118,9 +160,6 @@ export const QuickLinkSelector: React.FC<QuickLinkSelectorProps> = ({
   const linkedObjective = currentLinks.objectiveId ? objectives.find(o => o.id === currentLinks.objectiveId) : null;
   const linkedKeyResult = currentLinks.keyResultId ? keyResults.find(kr => kr.id === currentLinks.keyResultId) : null;
 
-  const bestSuggestion = getBestSuggestion(suggestions);
-  const hasAnyLinks = currentLinks.lifeAreaId || currentLinks.objectiveId || currentLinks.keyResultId;
-
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between mb-3">
@@ -135,8 +174,8 @@ export const QuickLinkSelector: React.FC<QuickLinkSelectorProps> = ({
         )}
       </div>
 
-      {/* Auto-suggestions panel */}
-      {showSuggestions && showSuggestionsPanel && suggestions.length > 0 && !hasAnyLinks && (
+      {/* Auto-suggestions panel - Always show if there are high confidence suggestions */}
+      {showSuggestions && (showSuggestionsPanel || bestSuggestion?.confidence === 'high') && suggestions.length > 0 && !hasAnyLinks && (
         <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 space-y-2">
           <div className="flex items-center gap-2 mb-2">
             <span className="material-symbols-outlined text-primary text-lg">lightbulb</span>

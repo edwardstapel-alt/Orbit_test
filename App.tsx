@@ -23,14 +23,15 @@ import { Today } from './views/Today';
 import { DayPartsSettings } from './views/DayPartsSettings';
 import { Calendar } from './views/Calendar';
 import { UnifiedSearch } from './components/UnifiedSearch';
+import { Statistics } from './views/Statistics';
 
 export default function App() {
-  const [currentView, setCurrentView] = useState<View>(View.LIFE_AREAS);
+  const [currentView, setCurrentView] = useState<View>(View.DASHBOARD);
   const [selectedFriend, setSelectedFriend] = useState<Friend | null>(null);
   const [showSearch, setShowSearch] = useState(false);
   
   // Navigation History Stack
-  const [viewHistory, setViewHistory] = useState<View[]>([View.LIFE_AREAS]);
+  const [viewHistory, setViewHistory] = useState<View[]>([View.DASHBOARD]);
   
   // Editor State
   const [editorType, setEditorType] = useState<EntityType | null>(null);
@@ -39,13 +40,37 @@ export default function App() {
 
   // Detail View States
   const [selectedObjectiveId, setSelectedObjectiveId] = useState<string | undefined>(undefined);
+  const [selectedLifeAreaId, setSelectedLifeAreaId] = useState<string | undefined>(undefined);
+
+  // Main navigation views (bottom nav items)
+  const mainNavViews = [
+    View.DASHBOARD,
+    View.LIFE_AREAS,
+    View.TODAY,
+    View.OBJECTIVES_OVERVIEW,
+    View.STATISTICS
+  ];
 
   // Navigation helper functions
   const navigateTo = (view: View, addToHistory: boolean = true) => {
-    if (addToHistory && currentView !== view) {
+    // If navigating to a main nav view, replace history instead of adding
+    // This provides better UX: clicking bottom nav resets navigation stack
+    if (mainNavViews.includes(view)) {
+      // Replace history with just the current view (if it's not already a main nav)
+      if (!mainNavViews.includes(currentView)) {
+        setViewHistory([currentView]);
+      } else {
+        // Already on a main nav, just switch without history
+        setViewHistory([]);
+      }
+      setCurrentView(view);
+    } else if (addToHistory && currentView !== view) {
+      // For detail views, add to history normally
       setViewHistory(prev => [...prev, currentView]);
+      setCurrentView(view);
+    } else {
+      setCurrentView(view);
     }
-    setCurrentView(view);
   };
 
   const navigateBack = () => {
@@ -55,7 +80,7 @@ export default function App() {
       setCurrentView(previousView);
     } else {
       // Fallback to default view if no history
-      setCurrentView(View.LIFE_AREAS);
+      setCurrentView(View.DASHBOARD);
     }
   };
 
@@ -68,6 +93,16 @@ export default function App() {
     } else {
       // Settings not in history, navigate there without adding current view
       setCurrentView(View.SETTINGS);
+      // Don't add to history - this is a direct navigation
+    }
+  };
+  
+  const navigateBackToProfile = () => {
+    // For profile sub-pages, always go back to profile
+    if (viewHistory.length > 0 && viewHistory[viewHistory.length - 1] === View.PROFILE) {
+      navigateBack();
+    } else {
+      setCurrentView(View.PROFILE);
     }
   };
 
@@ -75,7 +110,7 @@ export default function App() {
     if (viewHistory.length > 0) {
       return viewHistory[viewHistory.length - 1];
     }
-    return View.LIFE_AREAS; // Default fallback
+    return View.DASHBOARD; // Default fallback
   };
 
   const handleFriendSelect = (friend: Friend) => {
@@ -103,17 +138,33 @@ export default function App() {
     navigateTo(View.OBJECTIVE_DETAIL);
   };
 
+  const handleViewLifeArea = (id: string) => {
+    setSelectedLifeAreaId(id);
+    navigateTo(View.LIFE_AREA_DETAIL);
+  };
+
   const handleUpdateKeyResult = (id: string) => {
     openEditor('keyResult', id);
   };
 
   // Navigation Handlers
-  const openMenu = () => navigateTo(View.SETTINGS);
-  const openProfile = () => {
-    // Direct navigation to profile - more intuitive
-    if (currentView === View.PROFILE) {
-      // Already in profile, do nothing or go back
+  const openMenu = () => {
+    // If already in settings, go back
+    if (currentView === View.SETTINGS) {
       navigateBack();
+    } else {
+      navigateTo(View.SETTINGS);
+    }
+  };
+  
+  const openProfile = () => {
+    // Direct navigation to profile - always navigate, don't add to history if coming from settings
+    if (currentView === View.PROFILE) {
+      // Already in profile, go back
+      navigateBack();
+    } else if (currentView === View.SETTINGS) {
+      // Coming from settings, navigate without adding to history
+      setCurrentView(View.PROFILE);
     } else {
       navigateTo(View.PROFILE);
     }
@@ -134,6 +185,12 @@ export default function App() {
                   onFriendSelect={handleFriendSelect} 
                   onNavigate={navigateTo} 
                   onEdit={openEditor} 
+                  onMenuClick={openMenu}
+                  onProfileClick={openProfile}
+               />;
+      case View.STATISTICS:
+        return <Statistics 
+                  onNavigate={navigateTo}
                   onMenuClick={openMenu}
                   onProfileClick={openProfile}
                />;
@@ -162,7 +219,7 @@ export default function App() {
       case View.SETTINGS:
         return <GeneralSettings onBack={navigateBack} onNavigate={navigateTo} />;
       case View.PROFILE:
-        return <PersonalSettings onBack={navigateBackToSettings} />;
+        return <PersonalSettings onBack={navigateBack} />;
       case View.SYNCED_ACCOUNTS:
         return <SyncedAccounts onBack={navigateBackToSettings} />;
       case View.TEAM_SETTINGS:
@@ -183,14 +240,29 @@ export default function App() {
                />;
       case View.LIFE_AREAS:
         return <LifeAreas 
-                  onNavigate={navigateTo}
+                  onNavigate={(view, lifeAreaId?) => {
+                    if (lifeAreaId) {
+                      handleViewLifeArea(lifeAreaId);
+                    } else {
+                      navigateTo(view);
+                    }
+                  }}
                   onMenuClick={openMenu}
                   onProfileClick={openProfile}
                   onSearchClick={() => setShowSearch(true)}
                   onEdit={openEditor}
                />;
       case View.LIFE_AREA_DETAIL:
-        const selectedLifeAreaId = localStorage.getItem('orbit_selectedLifeArea') || '';
+        if (!selectedLifeAreaId) {
+          // Fallback to dashboard if no life area selected
+          return <Dashboard 
+            onNavigate={navigateTo} 
+            onEdit={openEditor} 
+            onViewObjective={handleViewObjective}
+            onMenuClick={openMenu}
+            onProfileClick={openProfile}
+          />;
+        }
         return <LifeAreaDetail 
                   lifeAreaId={selectedLifeAreaId}
                   onNavigate={navigateTo}
@@ -202,35 +274,34 @@ export default function App() {
                   onViewObjective={handleViewObjective}
                />;
       case View.OBJECTIVE_DETAIL:
-        const objectiveIdFromStorage = localStorage.getItem('orbit_selectedObjectiveId');
-        const activeObjectiveId = selectedObjectiveId || objectiveIdFromStorage || undefined;
-        if (activeObjectiveId && !selectedObjectiveId) {
-          setSelectedObjectiveId(activeObjectiveId);
+        if (!selectedObjectiveId) {
+          // Fallback to dashboard if no objective selected
+          return <Dashboard 
+            onNavigate={navigateTo} 
+            onEdit={openEditor} 
+            onViewObjective={handleViewObjective}
+            onMenuClick={openMenu}
+            onProfileClick={openProfile}
+          />;
         }
-        return activeObjectiveId ? (
+        return (
             <ObjectiveDetail 
-                objectiveId={activeObjectiveId} 
+                objectiveId={selectedObjectiveId} 
                 onBack={navigateBack}
                 onEdit={(type, id, parentId, context) => {
                   if (type === 'keyResult') {
-                    openEditor(type, id, parentId || activeObjectiveId);
+                    openEditor(type, id, parentId || selectedObjectiveId);
                   } else if (type === 'habit') {
                     openEditor('habit', id, undefined, context);
                   } else if (type === 'lifeArea') {
                     openEditor('lifeArea', id);
                   } else {
-                    openEditor('objective', activeObjectiveId);
+                    openEditor('objective', selectedObjectiveId);
                   }
                 }}
-                onAddKR={() => openEditor('keyResult', undefined, activeObjectiveId)}
+                onAddKR={() => openEditor('keyResult', undefined, selectedObjectiveId)}
             />
-        ) : <Dashboard 
-              onNavigate={navigateTo} 
-              onEdit={openEditor} 
-              onViewObjective={handleViewObjective}
-              onMenuClick={openMenu}
-              onProfileClick={openProfile}
-            />;
+        );
       case View.GOAL_TIMELINE:
         return <GoalTimeline 
                   onNavigate={navigateTo}
@@ -260,13 +331,22 @@ export default function App() {
     currentView !== View.NOTIFICATIONS &&
     currentView !== View.OBJECTIVE_DETAIL &&
     currentView !== View.MAP &&
-    currentView !== View.EDITOR; 
+    currentView !== View.EDITOR &&
+    currentView !== View.RELATIONSHIPS; 
 
   return (
     <DataProvider>
         <div className="flex justify-center min-h-screen bg-gray-100">
         <div className="w-full max-w-md h-screen bg-background relative shadow-2xl overflow-hidden flex flex-col">
-            {renderView()}
+            <div 
+              key={currentView} 
+              className="flex-1 overflow-y-auto"
+              style={{
+                animation: 'fadeIn 0.25s ease-in-out'
+              }}
+            >
+              {renderView()}
+            </div>
             {showBottomNav && <BottomNav currentView={currentView} onNavigate={navigateTo} />}
             
             {/* Modal Layer */}
@@ -278,7 +358,17 @@ export default function App() {
           contextObjectiveId={editorContext?.objectiveId}
           contextLifeAreaId={editorContext?.lifeAreaId}
           onClose={closeEditor}
-          onNavigate={navigateTo}
+          onNavigate={(view, objectiveId?, lifeAreaId?) => {
+            if (objectiveId) {
+              setSelectedObjectiveId(objectiveId);
+              navigateTo(View.OBJECTIVE_DETAIL);
+            } else if (lifeAreaId) {
+              setSelectedLifeAreaId(lifeAreaId);
+              navigateTo(View.LIFE_AREA_DETAIL);
+            } else {
+              navigateTo(view);
+            }
+          }}
           onEdit={openEditor}
         />
       )}
@@ -287,7 +377,13 @@ export default function App() {
       {showSearch && (
         <UnifiedSearch
           onClose={() => setShowSearch(false)}
-          onNavigate={navigateTo}
+          onNavigate={(view, lifeAreaId?) => {
+            if (lifeAreaId) {
+              handleViewLifeArea(lifeAreaId);
+            } else {
+              navigateTo(view);
+            }
+          }}
           onEdit={openEditor}
           onViewObjective={handleViewObjective}
         />
