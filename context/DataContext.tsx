@@ -340,7 +340,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // Firebase Sync: Initial sync and auth state watching
   useEffect(() => {
+    let isMounted = true;
     const unsubscribe = onAuthStateChange(async (user) => {
+      if (!isMounted) return;
       if (user) {
         console.log('User authenticated, syncing from Firebase...');
         try {
@@ -363,7 +365,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               if (syncResult.data.friends.length > 0) setFriends(syncResult.data.friends);
               if (syncResult.data.statusUpdates.length > 0) setStatusUpdates(syncResult.data.statusUpdates);
               if (syncResult.data.userProfile) {
-                updateUserProfile(syncResult.data.userProfile);
+                setUserProfile(prev => ({ ...prev, ...syncResult.data.userProfile }));
               }
             } else {
               // No Firebase data, upload local data
@@ -437,7 +439,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           }
         }));
 
-        // Cleanup function
+        // Cleanup function for unsubscribers
         return () => {
           unsubscribers.forEach(unsub => unsub());
         };
@@ -447,9 +449,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
 
     return () => {
+      isMounted = false;
       unsubscribe();
     };
-  }, []); // Only run once on mount
+  }, []); // Only run once on mount - eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Actions ---
 

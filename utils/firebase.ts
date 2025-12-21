@@ -26,9 +26,16 @@ export const db = getFirestore(app);
 let analytics: any = null;
 if (typeof window !== 'undefined') {
   try {
-    analytics = getAnalytics(app);
-  } catch (error) {
-    console.warn('Analytics initialization failed:', error);
+    // Only initialize analytics if not already initialized
+    if (!analytics) {
+      analytics = getAnalytics(app);
+    }
+  } catch (error: any) {
+    // Analytics might fail if already initialized or in development
+    if (error.code !== 'already-initialized') {
+      console.warn('Analytics initialization failed:', error);
+    }
+    analytics = null;
   }
 }
 

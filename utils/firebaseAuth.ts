@@ -90,6 +90,11 @@ export const getCurrentUser = (): User | null => {
   return auth.currentUser;
 };
 
+// Check if user is authenticated
+export const isAuthenticated = (): boolean => {
+  return auth.currentUser !== null;
+};
+
 // Watch auth state changes
 export const onAuthStateChange = (callback: (user: User | null) => void): (() => void) => {
   return onAuthStateChanged(auth, callback);
