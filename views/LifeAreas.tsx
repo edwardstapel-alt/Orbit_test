@@ -166,6 +166,7 @@ export const LifeAreas: React.FC<LifeAreasProps> = ({ onNavigate, onMenuClick, o
             </button>
           )}
         </div>
+        </div>
       </main>
     </div>
   );
