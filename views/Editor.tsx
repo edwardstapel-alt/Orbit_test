@@ -370,7 +370,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
       </header>
       
       <div className="flex-1 overflow-y-auto bg-gray-50/50 pb-32">
-        <div className="max-w-md mx-auto p-6 space-y-6">
+        <div className="max-w-4xl mx-auto p-6 md:p-8 space-y-6">
         
         {/* TASK FORM */}
         {type === 'task' && (

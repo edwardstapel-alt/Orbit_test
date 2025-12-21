@@ -33,7 +33,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentView, onNavigate })
   const isFilled = (view: View) => activeView === view ? "filled" : "";
 
   return (
-    <nav className="fixed bottom-0 w-full z-[70] px-6 py-6 pointer-events-none max-w-md mx-auto left-0 right-0">
+    <nav className="fixed bottom-0 w-full z-[70] px-6 py-6 pointer-events-none max-w-[1280px] mx-auto left-0 right-0">
       <div className="pointer-events-auto h-[72px] rounded-full bg-surface/95 backdrop-blur-xl shadow-floating flex items-center justify-between px-2 border border-white/50">
         
         <button 

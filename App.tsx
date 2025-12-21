@@ -337,7 +337,7 @@ export default function App() {
   return (
     <DataProvider>
         <div className="flex justify-center min-h-screen bg-gray-100">
-        <div className="w-full max-w-md h-screen bg-background relative shadow-2xl overflow-hidden flex flex-col">
+        <div className="w-full max-w-[1280px] h-screen bg-background relative shadow-2xl overflow-hidden flex flex-col">
             <div 
               key={currentView} 
               className="flex-1 overflow-y-auto"

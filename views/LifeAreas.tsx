@@ -29,7 +29,8 @@ export const LifeAreas: React.FC<LifeAreasProps> = ({ onNavigate, onMenuClick, o
         showSearch={true}
       />
 
-      <main className="flex-1 overflow-y-auto no-scrollbar pb-32 px-6 pt-6">
+      <main className="flex-1 overflow-y-auto no-scrollbar pb-32 px-6 md:px-12 lg:px-16 pt-6">
+        <div className="max-w-6xl mx-auto">
         {/* Life Areas List */}
         <div className="space-y-4">
           {lifeAreas.length === 0 ? (

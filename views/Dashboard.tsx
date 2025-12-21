@@ -124,8 +124,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
 
       {/* Toggle - Only show if showCategory is enabled */}
       {showCategory && (
-        <section className="px-6 mt-4">
-          <div className="flex h-12 w-full items-center justify-center rounded-2xl bg-[#E6E6E6] p-1.5 shadow-inner">
+        <section className="px-6 md:px-12 lg:px-16 mt-4">
+          <div className="flex h-12 w-full max-w-2xl mx-auto items-center justify-center rounded-2xl bg-[#E6E6E6] p-1.5 shadow-inner">
             <button 
               onClick={() => setMode('personal')}
               className={`flex-1 h-full text-sm font-semibold rounded-xl transition-all ${mode === 'personal' ? 'bg-white text-primary shadow-sm' : 'bg-transparent text-text-secondary hover:text-text-main'}`}
@@ -143,7 +143,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
       )}
 
       {/* OKRs (Objectives) */}
-      <section className="w-full mt-8 px-6">
+      <section className="w-full mt-8 px-6 md:px-12 lg:px-16">
+        <div className="max-w-6xl mx-auto">
         <div className="flex items-baseline justify-between mb-4">
           <h3 className="text-text-main text-lg font-bold tracking-tight">Objectives & Key Results</h3>
           <button className="text-primary text-sm font-medium hover:opacity-80 transition-opacity" onClick={() => onEdit('objective')}>
@@ -168,10 +169,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
                 onAddKR={() => onEdit('keyResult', undefined, obj.id)}
             />
         ))}
+        </div>
       </section>
 
       {/* Daily Focus */}
-      <section className="px-6 mt-4">
+      <section className="px-6 md:px-12 lg:px-16 mt-4">
+        <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-4 px-1">
           <h3 className="text-text-main text-lg font-bold tracking-tight">Daily Focus</h3>
         </div>
@@ -222,8 +225,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
 
       {/* Habit Streaks */}
       <section className="w-full mt-8">
-        <h3 className="text-text-main text-lg font-bold tracking-tight px-6 mb-4">Habit Streaks</h3>
-        <div className="flex overflow-x-auto no-scrollbar px-6 pb-6 gap-4 snap-x">
+        <h3 className="text-text-main text-lg font-bold tracking-tight px-6 md:px-12 lg:px-16 mb-4">Habit Streaks</h3>
+        <div className="flex overflow-x-auto no-scrollbar px-6 md:px-12 lg:px-16 pb-6 gap-4 snap-x">
             <button 
               onClick={() => onEdit('habit')} 
               className="snap-start flex flex-col items-center justify-center gap-2 p-4 rounded-3xl bg-white shadow-sm border-2 border-dashed border-slate-200 shrink-0 min-w-[140px] aspect-square cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors group"
