@@ -221,6 +221,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
             </div>
           </button>
         </div>
+        </div>
       </section>
 
       {/* Habit Streaks */}
