@@ -49,16 +49,24 @@ export const syncEntityToFirebase = async (
     }
 
     const docRef = doc(db, getUserCollection(collectionName), entityId);
-    await setDoc(docRef, {
+    
+    // Add timestamps - use current time if not provided
+    const now = new Date().toISOString();
+    const entityWithTimestamps = {
       ...entity,
       updatedAt: serverTimestamp(),
       syncedAt: serverTimestamp(),
+      lastModified: now, // Client-side timestamp for comparison
       userId // Store userId for security
-    }, { merge: true });
+    };
+    
+    await setDoc(docRef, entityWithTimestamps, { merge: true });
+    
+    console.log(`✅ Synced ${collectionName}/${entityId} to Firebase`);
 
     return { success: true };
   } catch (error: any) {
-    console.error(`Error syncing ${collectionName} to Firebase:`, error);
+    console.error(`❌ Error syncing ${collectionName} to Firebase:`, error);
     return { success: false, error: error.message };
   }
 };
@@ -109,11 +117,13 @@ export const syncEntitiesFromFirebase = async (
   try {
     const userId = getUserId();
     if (!userId) {
+      console.warn(`⚠️ Cannot sync ${collectionName}: User not authenticated`);
       return { success: false, data: [], error: 'User not authenticated' };
     }
 
     const collectionRef = collection(db, getUserCollection(collectionName));
     const snapshot = await getDocs(collectionRef);
+    console.log(`📥 Fetched ${snapshot.docs.length} ${collectionName} from Firebase`);
     
     const data = snapshot.docs
       .map(doc => {
@@ -295,17 +305,28 @@ export const syncAllFromFirebase = async (): Promise<{
         const profileRef = doc(db, `users/${userId}/profile`, 'data');
         const profileSnap = await getDoc(profileRef);
         data.userProfile = profileSnap.exists() ? profileSnap.data() : null;
+        if (data.userProfile) {
+          console.log('✅ Synced user profile');
+        } else {
+          console.log('ℹ️ No user profile found in Firebase');
+        }
       } catch (error) {
-        console.error('Error getting profile:', error);
+        console.error('❌ Error getting profile:', error);
         data.userProfile = null;
       }
     } else {
+      console.warn('⚠️ Cannot get profile: User not authenticated');
       data.userProfile = null;
     }
 
+    const totalItems = Object.values(data).reduce((sum: number, arr: any) => {
+      return sum + (Array.isArray(arr) ? arr.length : (arr ? 1 : 0));
+    }, 0);
+    console.log(`✅ Sync complete: ${totalItems} total items synced`);
+
     return { success: true, data };
   } catch (error: any) {
-    console.error('Error syncing all from Firebase:', error);
+    console.error('❌ Error syncing all from Firebase:', error);
     return {
       success: false,
       data: {

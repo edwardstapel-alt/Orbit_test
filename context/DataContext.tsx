@@ -3,6 +3,8 @@ import { Task, Habit, Friend, Objective, KeyResult, Place, TeamMember, DataConte
 import { syncService } from '../utils/syncService';
 import { isAuthenticated, onAuthStateChange } from '../utils/firebaseAuth';
 import { syncEntityToFirebase, syncAllFromFirebase, syncAllToFirebase, watchFirebaseChanges, deleteEntityFromFirebase, deleteAllUserDataFromFirebase } from '../utils/firebaseSync';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { db, auth } from '../utils/firebase';
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
@@ -343,13 +345,28 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Firebase Sync: Initial sync and auth state watching
   useEffect(() => {
     let isMounted = true;
+    let syncInProgress = false;
+    
     const unsubscribe = onAuthStateChange(async (user) => {
       if (!isMounted) return;
+      
       if (user) {
-        console.log('User authenticated, syncing from Firebase...');
+        console.log('✅ User authenticated:', user.email);
+        
+        // Prevent multiple simultaneous syncs
+        if (syncInProgress) {
+          console.log('⚠️ Sync already in progress, skipping...');
+          return;
+        }
+        
+        syncInProgress = true;
+        console.log('🔄 Starting Firebase sync...');
+        
         try {
           // Initial sync from Firebase
           const syncResult = await syncAllFromFirebase();
+          console.log('📥 Sync result:', syncResult.success ? 'Success' : 'Failed', syncResult.error || '');
+          
           if (syncResult.success && syncResult.data) {
             // Check if Firebase has data
             const hasFirebaseData = Object.values(syncResult.data).some(
@@ -357,133 +374,225 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             ) || syncResult.data.userProfile !== null;
 
             if (hasFirebaseData) {
-              // Merge strategy: merge Firebase data with local data, avoiding duplicates
-              // Helper function to merge arrays by ID, keeping the most recent version
-              const mergeArrays = <T extends { id: string }>(local: T[], firebase: T[]): T[] => {
+              // Merge strategy: merge Firebase data with local data, using timestamps to determine newest
+              // Helper function to merge arrays by ID, keeping the most recent version based on timestamps
+              const mergeArrays = <T extends { id: string; updatedAt?: string; lastModified?: string }>(local: T[], firebase: T[]): T[] => {
                 const merged = new Map<string, T>();
+                
                 // First add all local items
                 local.forEach(item => merged.set(item.id, item));
-                // Then add/update with Firebase items (Firebase wins on conflict)
-                firebase.forEach(item => merged.set(item.id, item));
+                
+                // Then merge Firebase items - use timestamp comparison
+                firebase.forEach(firebaseItem => {
+                  const localItem = merged.get(firebaseItem.id);
+                  
+                  if (!localItem) {
+                    // New item from Firebase, add it
+                    merged.set(firebaseItem.id, firebaseItem);
+                  } else {
+                    // Both exist - compare timestamps
+                    const firebaseTime = firebaseItem.updatedAt || firebaseItem.lastModified || '';
+                    const localTime = localItem.updatedAt || localItem.lastModified || '';
+                    
+                    if (firebaseTime > localTime) {
+                      // Firebase is newer, use Firebase version
+                      console.log(`🔄 Updating ${firebaseItem.id} from Firebase (newer timestamp)`);
+                      merged.set(firebaseItem.id, firebaseItem);
+                    } else if (localTime > firebaseTime) {
+                      // Local is newer, keep local version (but still sync it to Firebase)
+                      console.log(`💾 Keeping local version of ${firebaseItem.id} (newer timestamp)`);
+                      // Local version is kept, but we should sync it back to Firebase
+                      if (isAuthenticated()) {
+                        syncEntityToFirebase(
+                          firebaseItem.id.includes('task') ? 'tasks' :
+                          firebaseItem.id.includes('habit') ? 'habits' :
+                          firebaseItem.id.includes('objective') ? 'objectives' :
+                          firebaseItem.id.includes('keyResult') ? 'keyResults' :
+                          firebaseItem.id.includes('lifeArea') ? 'lifeAreas' :
+                          firebaseItem.id.includes('timeSlot') ? 'timeSlots' :
+                          firebaseItem.id.includes('friend') ? 'friends' :
+                          'statusUpdates',
+                          localItem,
+                          localItem.id
+                        ).catch(err => console.error('Error syncing local version back:', err));
+                      }
+                    } else {
+                      // Same timestamp or no timestamp - Firebase wins (default behavior)
+                      merged.set(firebaseItem.id, firebaseItem);
+                    }
+                  }
+                });
+                
                 return Array.from(merged.values());
               };
 
               if (syncResult.data.tasks.length > 0) {
-                setTasks(prev => mergeArrays(prev, syncResult.data.tasks));
+                const mergeTasks = createInitialMergeFunction('tasks');
+                setTasks(prev => mergeTasks(prev, syncResult.data.tasks));
               }
               if (syncResult.data.habits.length > 0) {
-                setHabits(prev => mergeArrays(prev, syncResult.data.habits));
+                const mergeHabits = createInitialMergeFunction('habits');
+                setHabits(prev => mergeHabits(prev, syncResult.data.habits));
               }
               if (syncResult.data.objectives.length > 0) {
-                setObjectives(prev => mergeArrays(prev, syncResult.data.objectives));
+                const mergeObjectives = createInitialMergeFunction('objectives');
+                setObjectives(prev => mergeObjectives(prev, syncResult.data.objectives));
               }
               if (syncResult.data.keyResults.length > 0) {
-                setKeyResults(prev => mergeArrays(prev, syncResult.data.keyResults));
+                const mergeKeyResults = createInitialMergeFunction('keyResults');
+                setKeyResults(prev => mergeKeyResults(prev, syncResult.data.keyResults));
               }
               if (syncResult.data.lifeAreas.length > 0) {
-                setLifeAreas(prev => mergeArrays(prev, syncResult.data.lifeAreas));
+                const mergeLifeAreas = createInitialMergeFunction('lifeAreas');
+                setLifeAreas(prev => mergeLifeAreas(prev, syncResult.data.lifeAreas));
               }
               if (syncResult.data.timeSlots.length > 0) {
-                setTimeSlots(prev => mergeArrays(prev, syncResult.data.timeSlots));
+                const mergeTimeSlots = createInitialMergeFunction('timeSlots');
+                setTimeSlots(prev => mergeTimeSlots(prev, syncResult.data.timeSlots));
               }
               if (syncResult.data.friends.length > 0) {
-                setFriends(prev => mergeArrays(prev, syncResult.data.friends));
+                const mergeFriends = createInitialMergeFunction('friends');
+                setFriends(prev => mergeFriends(prev, syncResult.data.friends));
               }
               if (syncResult.data.statusUpdates.length > 0) {
-                setStatusUpdates(prev => mergeArrays(prev, syncResult.data.statusUpdates));
+                const mergeStatusUpdates = createInitialMergeFunction('statusUpdates');
+                setStatusUpdates(prev => mergeStatusUpdates(prev, syncResult.data.statusUpdates));
               }
               if (syncResult.data.userProfile) {
                 setUserProfile(prev => ({ ...prev, ...syncResult.data.userProfile }));
               }
             } else {
               // No Firebase data, upload local data
-              console.log('No Firebase data found, uploading local data...');
-              await syncAllToFirebase({
-                tasks,
-                habits,
-                objectives,
-                keyResults,
-                lifeAreas,
-                timeSlots,
-                friends,
-                statusUpdates,
-                userProfile
-              });
+              console.log('📤 No Firebase data found, uploading local data...');
+              try {
+                const uploadResult = await syncAllToFirebase({
+                  tasks,
+                  habits,
+                  objectives,
+                  keyResults,
+                  lifeAreas,
+                  timeSlots,
+                  friends,
+                  statusUpdates,
+                  userProfile
+                });
+                console.log('✅ Local data uploaded:', uploadResult.success ? 'Success' : 'Failed', uploadResult.errors || '');
+              } catch (uploadError) {
+                console.error('❌ Error uploading local data:', uploadError);
+              }
             }
+          } else {
+            console.warn('⚠️ Sync failed:', syncResult.error);
           }
         } catch (error) {
-          console.error('Error syncing from Firebase:', error);
+          console.error('❌ Error syncing from Firebase:', error);
+        } finally {
+          syncInProgress = false;
         }
 
         // Set up real-time listeners for each collection
         const unsubscribers: (() => void)[] = [];
 
-        // Watch for changes in Firebase - merge with local data to avoid duplicates
-        // Helper function to merge arrays by ID, keeping Firebase version if both exist
-        const mergeArrays = <T extends { id: string }>(local: T[], firebase: T[]): T[] => {
-          const merged = new Map<string, T>();
-          // First add all local items
-          local.forEach(item => merged.set(item.id, item));
-          // Then add/update with Firebase items (Firebase wins on conflict)
-          firebase.forEach(item => merged.set(item.id, item));
-          return Array.from(merged.values());
+        // Watch for changes in Firebase - merge with local data using timestamps
+        // Helper function to merge arrays by ID, using timestamps to determine newest
+        // collectionName is passed to know which collection we're merging
+        const createMergeFunction = (collectionName: string) => {
+          return <T extends { id: string; updatedAt?: string; lastModified?: string }>(local: T[], firebase: T[]): T[] => {
+            const merged = new Map<string, T>();
+            
+            // First add all local items
+            local.forEach(item => merged.set(item.id, item));
+            
+            // Then merge Firebase items - use timestamp comparison
+            firebase.forEach(firebaseItem => {
+              const localItem = merged.get(firebaseItem.id);
+              
+              if (!localItem) {
+                // New item from Firebase, add it
+                merged.set(firebaseItem.id, firebaseItem);
+                console.log(`➕ New ${collectionName} from Firebase: ${firebaseItem.id}`);
+              } else {
+                // Both exist - compare timestamps
+                const firebaseTime = firebaseItem.updatedAt || firebaseItem.lastModified || '';
+                const localTime = localItem.updatedAt || localItem.lastModified || '';
+                
+                if (firebaseTime > localTime) {
+                  // Firebase is newer, use Firebase version
+                  console.log(`🔄 Real-time update: ${collectionName}/${firebaseItem.id} from Firebase (newer)`);
+                  merged.set(firebaseItem.id, firebaseItem);
+                } else if (localTime > firebaseTime) {
+                  // Local is newer, keep local version and sync back to Firebase
+                  console.log(`💾 Keeping local version: ${collectionName}/${firebaseItem.id} (local is newer)`);
+                  if (isAuthenticated()) {
+                    syncEntityToFirebase(collectionName, localItem, localItem.id)
+                      .catch(err => console.error(`Error syncing local ${collectionName} back:`, err));
+                  }
+                } else {
+                  // Same timestamp or no timestamp - Firebase wins (default behavior)
+                  merged.set(firebaseItem.id, firebaseItem);
+                }
+              }
+            });
+            
+            return Array.from(merged.values());
+          };
         };
 
         unsubscribers.push(watchFirebaseChanges('tasks', (firebaseTasks) => {
           // Don't restore data if we're in the middle of clearing
           if (isClearingData) return;
-          if (firebaseTasks.length > 0) {
-            setTasks(prev => mergeArrays(prev, firebaseTasks));
-          }
+          console.log(`📡 Real-time update: ${firebaseTasks.length} tasks from Firebase`);
+          const mergeTasks = createMergeFunction('tasks');
+          setTasks(prev => mergeTasks(prev, firebaseTasks));
         }));
 
         unsubscribers.push(watchFirebaseChanges('objectives', (firebaseObjectives) => {
           if (isClearingData) return;
-          if (firebaseObjectives.length > 0) {
-            setObjectives(prev => mergeArrays(prev, firebaseObjectives));
-          }
+          console.log(`📡 Real-time update: ${firebaseObjectives.length} objectives from Firebase`);
+          const mergeObjectives = createMergeFunction('objectives');
+          setObjectives(prev => mergeObjectives(prev, firebaseObjectives));
         }));
 
         unsubscribers.push(watchFirebaseChanges('keyResults', (firebaseKeyResults) => {
           if (isClearingData) return;
-          if (firebaseKeyResults.length > 0) {
-            setKeyResults(prev => mergeArrays(prev, firebaseKeyResults));
-          }
+          console.log(`📡 Real-time update: ${firebaseKeyResults.length} keyResults from Firebase`);
+          const mergeKeyResults = createMergeFunction('keyResults');
+          setKeyResults(prev => mergeKeyResults(prev, firebaseKeyResults));
         }));
 
         unsubscribers.push(watchFirebaseChanges('timeSlots', (firebaseTimeSlots) => {
           if (isClearingData) return;
-          if (firebaseTimeSlots.length > 0) {
-            setTimeSlots(prev => mergeArrays(prev, firebaseTimeSlots));
-          }
+          console.log(`📡 Real-time update: ${firebaseTimeSlots.length} timeSlots from Firebase`);
+          const mergeTimeSlots = createMergeFunction('timeSlots');
+          setTimeSlots(prev => mergeTimeSlots(prev, firebaseTimeSlots));
         }));
 
         unsubscribers.push(watchFirebaseChanges('habits', (firebaseHabits) => {
           if (isClearingData) return;
-          if (firebaseHabits.length > 0) {
-            setHabits(prev => mergeArrays(prev, firebaseHabits));
-          }
+          console.log(`📡 Real-time update: ${firebaseHabits.length} habits from Firebase`);
+          const mergeHabits = createMergeFunction('habits');
+          setHabits(prev => mergeHabits(prev, firebaseHabits));
         }));
 
         unsubscribers.push(watchFirebaseChanges('lifeAreas', (firebaseLifeAreas) => {
           if (isClearingData) return;
-          if (firebaseLifeAreas.length > 0) {
-            setLifeAreas(prev => mergeArrays(prev, firebaseLifeAreas));
-          }
+          console.log(`📡 Real-time update: ${firebaseLifeAreas.length} lifeAreas from Firebase`);
+          const mergeLifeAreas = createMergeFunction('lifeAreas');
+          setLifeAreas(prev => mergeLifeAreas(prev, firebaseLifeAreas));
         }));
 
         unsubscribers.push(watchFirebaseChanges('friends', (firebaseFriends) => {
           if (isClearingData) return;
-          if (firebaseFriends.length > 0) {
-            setFriends(prev => mergeArrays(prev, firebaseFriends));
-          }
+          console.log(`📡 Real-time update: ${firebaseFriends.length} friends from Firebase`);
+          const mergeFriends = createMergeFunction('friends');
+          setFriends(prev => mergeFriends(prev, firebaseFriends));
         }));
 
         unsubscribers.push(watchFirebaseChanges('statusUpdates', (firebaseStatusUpdates) => {
           if (isClearingData) return;
-          if (firebaseStatusUpdates.length > 0) {
-            setStatusUpdates(prev => mergeArrays(prev, firebaseStatusUpdates));
-          }
+          console.log(`📡 Real-time update: ${firebaseStatusUpdates.length} statusUpdates from Firebase`);
+          const mergeStatusUpdates = createMergeFunction('statusUpdates');
+          setStatusUpdates(prev => mergeStatusUpdates(prev, firebaseStatusUpdates));
         }));
 
         // Cleanup function for unsubscribers
@@ -491,7 +600,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           unsubscribers.forEach(unsub => unsub());
         };
       } else {
-        console.log('User not authenticated');
+        console.log('👤 User not authenticated');
       }
     });
 
@@ -503,7 +612,26 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // --- Actions ---
 
-  const updateUserProfile = (profile: Partial<UserProfile>) => setUserProfile(prev => ({ ...prev, ...profile }));
+  const updateUserProfile = (profile: Partial<UserProfile>) => {
+    setUserProfile(prev => {
+      const updated = { ...prev, ...profile };
+      // Auto-sync to Firebase (profile is stored in users/{userId}/profile/data)
+      if (isAuthenticated()) {
+        const userId = auth.currentUser?.uid;
+        if (userId) {
+          const profileRef = doc(db, `users/${userId}/profile`, 'data');
+          setDoc(profileRef, {
+            ...updated,
+            updatedAt: serverTimestamp(),
+            syncedAt: serverTimestamp(),
+          }, { merge: true }).catch(error => {
+            console.error('Error syncing userProfile to Firebase:', error);
+          });
+        }
+      }
+      return updated;
+    });
+  };
 
   const addTask = (item: Task) => {
     // Check if task already exists (prevent duplicates)
@@ -513,23 +641,36 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       updateTask(item);
       return;
     }
-    setTasks([...tasks, item]);
+    
+    // Add timestamp if not present
+    const taskWithTimestamp = {
+      ...item,
+      lastModified: item.lastModified || new Date().toISOString(),
+    };
+    
+    setTasks([...tasks, taskWithTimestamp]);
     // Auto-sync to Google Tasks
-    syncService.queueSync('task', 'create', item.id, item);
+    syncService.queueSync('task', 'create', taskWithTimestamp.id, taskWithTimestamp);
     // Auto-sync to Firebase (async, fire and forget)
     if (isAuthenticated()) {
-      syncEntityToFirebase('tasks', item, item.id).catch(error => {
+      syncEntityToFirebase('tasks', taskWithTimestamp, taskWithTimestamp.id).catch(error => {
         console.error('Error syncing task to Firebase:', error);
       });
     }
   };
   const updateTask = (item: Task) => {
-    setTasks(tasks.map(t => t.id === item.id ? item : t));
+    // Update timestamp
+    const taskWithTimestamp = {
+      ...item,
+      lastModified: new Date().toISOString(),
+    };
+    
+    setTasks(tasks.map(t => t.id === taskWithTimestamp.id ? taskWithTimestamp : t));
     // Auto-sync to Google Tasks
-    syncService.queueSync('task', 'update', item.id, item);
+    syncService.queueSync('task', 'update', taskWithTimestamp.id, taskWithTimestamp);
     // Auto-sync to Firebase (async, fire and forget)
     if (isAuthenticated()) {
-      syncEntityToFirebase('tasks', item, item.id).catch(error => {
+      syncEntityToFirebase('tasks', taskWithTimestamp, taskWithTimestamp.id).catch(error => {
         console.error('Error syncing task to Firebase:', error);
       });
     }
@@ -693,7 +834,25 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       updateKeyResult(item);
       return;
     }
-    setKeyResults([...keyResults, item]);
+    
+    // Ensure required fields have defaults
+    const keyResultWithDefaults: KeyResult = {
+      ...item,
+      measurementType: item.measurementType || 'number',
+      decimals: item.decimals !== undefined ? item.decimals : 0,
+      status: item.status || 'On Track',
+      current: item.current !== undefined ? item.current : 0,
+      target: item.target !== undefined ? item.target : 0,
+    };
+    
+    setKeyResults([...keyResults, keyResultWithDefaults]);
+    
+    // Auto-sync to Firebase
+    if (isAuthenticated()) {
+      syncEntityToFirebase('keyResults', keyResultWithDefaults, keyResultWithDefaults.id).catch(error => {
+        console.error('Error syncing keyResult to Firebase:', error);
+      });
+    }
   };
   
   const updateKeyResult = (item: KeyResult) => {
@@ -1009,7 +1168,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // Set flag to prevent Firebase listeners from restoring data
     setIsClearingData(true);
     
-    // Clear all state
+    // Clear all state (but keep userProfile - it will be updated by import)
     setTasks([]);
     setHabits([]);
     setFriends([]);
@@ -1022,6 +1181,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setTimeSlots([]);
     setStatusUpdates([]);
     // Keep dayParts as they are defaults
+    // Note: userProfile is NOT cleared here - it will be updated by import
     
     // Clear all localStorage keys
     const localStorageKeys = [

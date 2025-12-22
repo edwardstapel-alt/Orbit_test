@@ -125,9 +125,19 @@ export const DataManagement: React.FC<DataManagementProps> = ({ onBack }) => {
       // Import all data
       const data = dataToImport;
 
-      // Import user profile
+      // Import user profile FIRST (before other data that might trigger Firebase sync)
       if (data.userProfile) {
-        updateUserProfile(data.userProfile);
+        // Ensure all fields are present
+        const profileToImport = {
+          firstName: data.userProfile.firstName || '',
+          lastName: data.userProfile.lastName || '',
+          email: data.userProfile.email || '',
+          dob: data.userProfile.dob || '',
+          image: data.userProfile.image || '',
+        };
+        updateUserProfile(profileToImport);
+        // Wait a bit to ensure profile is saved
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
 
       // Import settings
@@ -144,16 +154,44 @@ export const DataManagement: React.FC<DataManagementProps> = ({ onBack }) => {
       }
 
       // Import collections (in order to maintain relationships)
+      // 1. Life Areas first (no dependencies)
       if (data.lifeAreas && Array.isArray(data.lifeAreas)) {
         data.lifeAreas.forEach((item: any) => addLifeArea(item));
       }
 
+      // 2. Objectives (depend on lifeAreas)
       if (data.objectives && Array.isArray(data.objectives)) {
         data.objectives.forEach((item: any) => addObjective(item));
       }
 
+      // 3. Key Results (depend on objectives) - wait a bit to ensure objectives are set
       if (data.keyResults && Array.isArray(data.keyResults)) {
-        data.keyResults.forEach((item: any) => addKeyResult(item));
+        // Small delay to ensure objectives are processed
+        await new Promise(resolve => setTimeout(resolve, 100));
+        let imported = 0;
+        let skipped = 0;
+        const importedObjectiveIds = new Set((data.objectives || []).map((obj: any) => obj.id));
+        data.keyResults.forEach((item: any) => {
+          // Validate that the objectiveId exists in the imported data
+          if (item.objectiveId && !importedObjectiveIds.has(item.objectiveId)) {
+            console.warn(`Key Result "${item.title}" references non-existent objective "${item.objectiveId}". Skipping.`);
+            skipped++;
+            return;
+          }
+          // Ensure required fields are present
+          if (!item.measurementType) {
+            item.measurementType = 'number';
+          }
+          if (item.decimals === undefined) {
+            item.decimals = 0;
+          }
+          addKeyResult(item);
+          imported++;
+        });
+        if (skipped > 0) {
+          console.warn(`Skipped ${skipped} key results due to missing objectives`);
+        }
+        console.log(`Imported ${imported} key results${skipped > 0 ? `, skipped ${skipped}` : ''}`);
       }
 
       if (data.tasks && Array.isArray(data.tasks)) {

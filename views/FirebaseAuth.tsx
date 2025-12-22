@@ -34,16 +34,23 @@ export const FirebaseAuth: React.FC<FirebaseAuthProps> = ({ onBack, onAuthentica
 
   // Check if user is already authenticated and watch for changes
   useEffect(() => {
-    const user = getCurrentUser();
-    if (user) {
-      setIsAuthenticated(true);
-      if (onAuthenticated) {
-        onAuthenticated();
+    const checkAuth = () => {
+      const user = getCurrentUser();
+      console.log('🔍 Checking auth status:', user ? `Logged in as ${user.email}` : 'Not logged in');
+      if (user) {
+        setIsAuthenticated(true);
+        // Don't call onAuthenticated here - user is already logged in, just viewing the page
+      } else {
+        setIsAuthenticated(false);
       }
-    }
+    };
+
+    // Check immediately
+    checkAuth();
 
     // Watch for auth state changes (e.g., login from another device)
     const unsubscribe = onAuthStateChange((user) => {
+      console.log('🔄 Auth state changed:', user ? `Logged in as ${user.email}` : 'Logged out');
       if (user) {
         setIsAuthenticated(true);
       } else {
@@ -52,7 +59,7 @@ export const FirebaseAuth: React.FC<FirebaseAuthProps> = ({ onBack, onAuthentica
     });
 
     return () => unsubscribe();
-  }, [onAuthenticated]);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,21 +70,34 @@ export const FirebaseAuth: React.FC<FirebaseAuthProps> = ({ onBack, onAuthentica
     try {
       if (isLogin) {
         // Login
+        console.log('🔐 Attempting email/password login...');
         const result = await loginUser(email, password);
         if (result.success && result.user) {
+          console.log('✅ Login successful:', result.user.email);
           setSuccess('Successfully logged in!');
           setIsAuthenticated(true);
           
           // Sync data from Firebase
-          const syncResult = await syncAllFromFirebase();
-          if (syncResult.success) {
-            setSuccess('Logged in and data synced!');
+          try {
+            console.log('🔄 Starting sync after login...');
+            const syncResult = await syncAllFromFirebase();
+            if (syncResult.success) {
+              console.log('✅ Sync successful after login');
+              setSuccess('Logged in and data synced!');
+            } else {
+              console.warn('⚠️ Sync failed after login:', syncResult.error);
+              setSuccess('Logged in! (Sync had issues - check console)');
+            }
+          } catch (syncError: any) {
+            console.error('❌ Sync error after login:', syncError);
+            setSuccess('Logged in! (Sync error - check console)');
           }
           
           if (onAuthenticated) {
             setTimeout(() => onAuthenticated(), 1000);
           }
         } else {
+          console.error('❌ Login failed:', result.error);
           setError(result.error || 'Login failed');
         }
       } else {
@@ -136,19 +156,28 @@ export const FirebaseAuth: React.FC<FirebaseAuthProps> = ({ onBack, onAuthentica
     setLoading(true);
 
     try {
+      console.log('🔐 Attempting Google login...');
       const result = await loginWithGoogle();
+      
       if (result.success && result.user) {
+        console.log('✅ Google login successful:', result.user.email);
         setSuccess('Successfully logged in with Google!');
         setIsAuthenticated(true);
         
         // Sync data from Firebase
         try {
+          console.log('🔄 Starting sync after Google login...');
           const syncResult = await syncAllFromFirebase();
           if (syncResult.success) {
+            console.log('✅ Sync successful after login');
             setSuccess('Logged in and data synced!');
+          } else {
+            console.warn('⚠️ Sync failed after login:', syncResult.error);
+            setSuccess('Logged in! (Sync had issues - check console)');
           }
-        } catch (syncError) {
-          console.error('Sync error:', syncError);
+        } catch (syncError: any) {
+          console.error('❌ Sync error after login:', syncError);
+          setSuccess('Logged in! (Sync error - check console)');
           // Don't fail login if sync fails
         }
         
@@ -156,10 +185,11 @@ export const FirebaseAuth: React.FC<FirebaseAuthProps> = ({ onBack, onAuthentica
           setTimeout(() => onAuthenticated(), 1000);
         }
       } else {
+        console.error('❌ Google login failed:', result.error);
         setError(result.error || 'Google login failed');
       }
     } catch (error: any) {
-      console.error('Google login exception:', error);
+      console.error('❌ Google login exception:', error);
       setError(error.message || 'An unexpected error occurred during Google login');
     } finally {
       setLoading(false);
@@ -167,6 +197,7 @@ export const FirebaseAuth: React.FC<FirebaseAuthProps> = ({ onBack, onAuthentica
   };
 
   if (isAuthenticated) {
+    const user = getCurrentUser();
     return (
       <div className="min-h-screen bg-background pb-24">
         {onBack && (
@@ -178,11 +209,48 @@ export const FirebaseAuth: React.FC<FirebaseAuthProps> = ({ onBack, onAuthentica
             showBack={true}
           />
         )}
-        <div className="px-4 py-6">
-          <div className="bg-green-50 border border-green-200 rounded-2xl p-6 text-center">
+        <div className="px-4 py-6 max-w-md mx-auto">
+          <div className="bg-green-50 border border-green-200 rounded-2xl p-6 text-center mb-4">
             <span className="material-symbols-outlined text-green-600 text-5xl mb-4">check_circle</span>
             <h2 className="text-xl font-bold text-green-800 mb-2">Authenticated!</h2>
-            <p className="text-green-700">Your data is now syncing with the cloud.</p>
+            <p className="text-green-700 mb-2">Your data is now syncing with the cloud.</p>
+            {user && (
+              <p className="text-sm text-green-600 mt-2">Logged in as: {user.email}</p>
+            )}
+          </div>
+          
+          <div className="bg-white rounded-2xl shadow-sm p-6 border border-slate-100">
+            <h3 className="text-lg font-bold text-text-main mb-4">Sync Status</h3>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-text-secondary">Authentication</span>
+                <span className="px-3 py-1 rounded-full bg-green-100 text-green-700 text-xs font-semibold">Active</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-text-secondary">Cloud Sync</span>
+                <span className="px-3 py-1 rounded-full bg-green-100 text-green-700 text-xs font-semibold">Enabled</span>
+              </div>
+            </div>
+            
+            <div className="mt-6 pt-6 border-t border-gray-200">
+              <button
+                onClick={async () => {
+                  if (window.confirm('Are you sure you want to log out? Your data will stop syncing.')) {
+                    const { logoutUser } = await import('../utils/firebaseAuth');
+                    const result = await logoutUser();
+                    if (result.success) {
+                      setIsAuthenticated(false);
+                      setSuccess('Logged out successfully');
+                    } else {
+                      setError(result.error || 'Logout failed');
+                    }
+                  }
+                }}
+                className="w-full py-3 bg-red-50 hover:bg-red-100 text-red-700 font-semibold rounded-xl transition-colors"
+              >
+                Log Out
+              </button>
+            </div>
           </div>
         </div>
       </div>
