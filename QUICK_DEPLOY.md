@@ -102,3 +102,5 @@ Converteer de SVG naar PNG (192x192 en 512x512) en plaats ze in `public/`.
 
 **Klaar!** Je app is nu permanent online en gratis! 🚀
 
+
+

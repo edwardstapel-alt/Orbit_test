@@ -618,7 +618,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                             <span className="text-sm font-medium text-text-secondary">
                               {data.formatKeyResultValue(linkedKR, formData.progressContribution || 1)}
                             </span>
-                          </div>
+                    </div>
                           <p className="text-xs text-text-tertiary mt-2">
                             Each time you complete this habit, the Key Result "{linkedKR.title}" will increase by this amount.
                             {linkedKR.measurementType === 'currency' && ' Example: €10 per completion'}
@@ -629,7 +629,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                       );
                     })()}
 
-                    <div>
+                     <div>
                         <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-2">Icon Code</label>
                         <div className="flex gap-2">
                             <input type="text" className="flex-1 p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main" 
@@ -772,13 +772,13 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                         {/* Custom Color */}
                         <div className="space-y-2">
                             <span className="text-xs font-medium text-text-secondary">Custom Color</span>
-                            <div className="flex items-center gap-3">
-                                <input 
-                                    type="color" 
+                        <div className="flex items-center gap-3">
+                            <input 
+                                type="color" 
                                     className="size-12 rounded-xl cursor-pointer border-2 border-gray-200" 
-                                    value={formData.timelineColor || (data.lifeAreas.find(la => la.id === formData.lifeAreaId)?.color || '#D95829')} 
-                                    onChange={(e) => handleChange('timelineColor', e.target.value)} 
-                                />
+                                value={formData.timelineColor || (data.lifeAreas.find(la => la.id === formData.lifeAreaId)?.color || '#D95829')} 
+                                onChange={(e) => handleChange('timelineColor', e.target.value)} 
+                            />
                                 <input
                                     type="text"
                                     className="flex-1 p-2 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-primary text-sm font-mono"
@@ -792,7 +792,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                                     placeholder="#D95829"
                                 />
                             </div>
-                            <p className="text-xs text-text-tertiary">Defaults to Life Area color</p>
+                                <p className="text-xs text-text-tertiary">Defaults to Life Area color</p>
                         </div>
                     </div>
                 )}
@@ -829,7 +829,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                                                 type="button"
                                                 onClick={() => handleChange('lifeAreaId', '')}
                                                 className="text-text-tertiary hover:text-text-main"
-                                            >
+                        >
                                                 <span className="material-symbols-outlined text-sm">close</span>
                                             </button>
                                         </>
@@ -1295,12 +1295,12 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                             <span className="text-xs font-medium text-text-secondary">Custom Color</span>
                         </div>
                         <div className="flex items-center gap-3">
-                            <input 
-                                type="color" 
+                        <input 
+                            type="color" 
                                 className="size-12 rounded-xl cursor-pointer border-2 border-gray-200" 
-                                value={formData.color || '#D95829'} 
-                                onChange={(e) => handleChange('color', e.target.value)} 
-                            />
+                            value={formData.color || '#D95829'} 
+                            onChange={(e) => handleChange('color', e.target.value)} 
+                        />
                             <input
                                 type="text"
                                 className="flex-1 p-2 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-primary text-sm font-mono"

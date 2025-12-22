@@ -203,7 +203,7 @@ export const LifeAreaDetail: React.FC<LifeAreaDetailProps> = ({
         title={lifeArea.name} 
         subtitle="Life Area" 
         onMenuClick={onMenuClick}
-        onProfileClick={onProfileClick}
+        onProfileClick={onProfileClick} 
         onBack={() => onNavigate(View.LIFE_AREAS)}
         showBack={true}
       />
@@ -247,10 +247,10 @@ export const LifeAreaDetail: React.FC<LifeAreaDetailProps> = ({
                 </span>
                 {areaTasks.length > 0 && (
                   <>
-                    <span className="text-text-tertiary">•</span>
+                <span className="text-text-tertiary">•</span>
                     <span className="font-medium text-text-secondary">
                       {areaTasks.length} {areaTasks.length === 1 ? 'task' : 'tasks'}
-                    </span>
+                </span>
                   </>
                 )}
               </div>
@@ -409,7 +409,7 @@ export const LifeAreaDetail: React.FC<LifeAreaDetailProps> = ({
               <div className="flex flex-col items-center gap-2">
                 <span className="material-symbols-outlined text-3xl text-text-tertiary group-hover:text-primary transition-colors">task_alt</span>
                 <p className="text-sm text-text-secondary group-hover:text-primary transition-colors">No tasks yet for this Life Area</p>
-              </div>
+            </div>
             </button>
           ) : (
             <div className="space-y-2">
@@ -448,7 +448,7 @@ export const LifeAreaDetail: React.FC<LifeAreaDetailProps> = ({
         </section>
 
         {/* Habits Section */}
-        <section>
+          <section>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-text-main">Habits</h2>
             <button 
@@ -478,22 +478,22 @@ export const LifeAreaDetail: React.FC<LifeAreaDetailProps> = ({
                 const weeklyData = habit.weeklyProgress || [false, false, false, false, false, false, false];
                 const completedCount = weeklyData.filter(Boolean).length;
                 return (
-                  <div
-                    key={habit.id}
+                <div
+                  key={habit.id}
                     onClick={() => onEdit && onEdit('habit', habit.id)}
                     className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex flex-col gap-3 cursor-pointer hover:shadow-md hover:border-primary/20 transition-all active:scale-[0.99]"
-                  >
+                >
                     <div className="flex items-center gap-3">
-                      <div 
+                  <div 
                         className="size-12 rounded-xl flex items-center justify-center shrink-0"
-                        style={{ backgroundColor: `${lifeArea.color}20` }}
-                      >
-                        <span 
-                          className="material-symbols-outlined text-xl"
-                          style={{ color: lifeArea.color }}
-                        >
-                          {habit.icon}
-                        </span>
+                    style={{ backgroundColor: `${lifeArea.color}20` }}
+                  >
+                    <span 
+                      className="material-symbols-outlined text-xl"
+                      style={{ color: lifeArea.color }}
+                    >
+                      {habit.icon}
+                    </span>
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-bold text-text-main truncate">{habit.name}</p>
@@ -611,8 +611,8 @@ export const LifeAreaDetail: React.FC<LifeAreaDetailProps> = ({
                         <div className="flex items-center gap-3">
                           <div className="size-10 rounded-xl bg-slate-50 flex items-center justify-center shrink-0">
                             <span className="material-symbols-outlined text-text-secondary">{habit.icon}</span>
-                          </div>
-                          <div className="flex-1">
+                  </div>
+                  <div className="flex-1">
                             <h5 className="font-semibold text-text-main mb-1">{habit.name}</h5>
                             <div className="flex items-center gap-2">
                               {habit.streak > 0 && (
@@ -652,7 +652,7 @@ export const LifeAreaDetail: React.FC<LifeAreaDetailProps> = ({
             </div>
           </div>
         </div>
-      )}
+        )}
 
       {/* Add Goal Modal */}
       {activeModal === 'addGoal' && (

@@ -61,7 +61,7 @@ export const ObjectivesOverview: React.FC<ObjectivesOverviewProps> = ({ onViewOb
               <span className="material-symbols-outlined text-[18px] align-middle mr-1.5">list</span>
               List
             </button>
-            <button
+          <button
               onClick={() => {
                 setViewMode('timeline');
                 onNavigate(View.GOAL_TIMELINE);
@@ -71,10 +71,10 @@ export const ObjectivesOverview: React.FC<ObjectivesOverviewProps> = ({ onViewOb
                   ? 'bg-white text-text-main shadow-sm'
                   : 'text-text-tertiary hover:text-text-secondary'
               }`}
-            >
+          >
               <span className="material-symbols-outlined text-[18px] align-middle mr-1.5">timeline</span>
               Timeline
-            </button>
+          </button>
           </div>
         )}
 
