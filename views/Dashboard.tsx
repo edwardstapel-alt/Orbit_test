@@ -126,20 +126,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
       {showCategory && (
         <section className="px-6 md:px-12 lg:px-16 mt-4">
           <div className="flex h-12 w-full max-w-2xl mx-auto items-center justify-center rounded-2xl bg-[#E6E6E6] p-1.5 shadow-inner">
-            <button 
-              onClick={() => setMode('personal')}
-              className={`flex-1 h-full text-sm font-semibold rounded-xl transition-all ${mode === 'personal' ? 'bg-white text-primary shadow-sm' : 'bg-transparent text-text-secondary hover:text-text-main'}`}
-            >
-              Personal
-            </button>
-            <button 
-              onClick={() => setMode('professional')}
-              className={`flex-1 h-full text-sm font-semibold rounded-xl transition-all ${mode === 'professional' ? 'bg-white text-primary shadow-sm' : 'bg-transparent text-text-secondary hover:text-text-main'}`}
-            >
-              Professional
-            </button>
-          </div>
-        </section>
+          <button 
+            onClick={() => setMode('personal')}
+            className={`flex-1 h-full text-sm font-semibold rounded-xl transition-all ${mode === 'personal' ? 'bg-white text-primary shadow-sm' : 'bg-transparent text-text-secondary hover:text-text-main'}`}
+          >
+            Personal
+          </button>
+          <button 
+            onClick={() => setMode('professional')}
+            className={`flex-1 h-full text-sm font-semibold rounded-xl transition-all ${mode === 'professional' ? 'bg-white text-primary shadow-sm' : 'bg-transparent text-text-secondary hover:text-text-main'}`}
+          >
+            Professional
+          </button>
+        </div>
+      </section>
       )}
 
       {/* OKRs (Objectives) */}

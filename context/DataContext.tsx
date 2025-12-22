@@ -374,89 +374,40 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             ) || syncResult.data.userProfile !== null;
 
             if (hasFirebaseData) {
-              // Merge strategy: merge Firebase data with local data, using timestamps to determine newest
-              // Helper function to merge arrays by ID, keeping the most recent version based on timestamps
-              const mergeArrays = <T extends { id: string; updatedAt?: string; lastModified?: string }>(local: T[], firebase: T[]): T[] => {
+              // Merge strategy: merge Firebase data with local data, avoiding duplicates
+              // Helper function to merge arrays by ID, keeping the most recent version
+              const mergeArrays = <T extends { id: string }>(local: T[], firebase: T[]): T[] => {
                 const merged = new Map<string, T>();
-                
                 // First add all local items
                 local.forEach(item => merged.set(item.id, item));
-                
-                // Then merge Firebase items - use timestamp comparison
-                firebase.forEach(firebaseItem => {
-                  const localItem = merged.get(firebaseItem.id);
-                  
-                  if (!localItem) {
-                    // New item from Firebase, add it
-                    merged.set(firebaseItem.id, firebaseItem);
-                  } else {
-                    // Both exist - compare timestamps
-                    const firebaseTime = firebaseItem.updatedAt || firebaseItem.lastModified || '';
-                    const localTime = localItem.updatedAt || localItem.lastModified || '';
-                    
-                    if (firebaseTime > localTime) {
-                      // Firebase is newer, use Firebase version
-                      console.log(`🔄 Updating ${firebaseItem.id} from Firebase (newer timestamp)`);
-                      merged.set(firebaseItem.id, firebaseItem);
-                    } else if (localTime > firebaseTime) {
-                      // Local is newer, keep local version (but still sync it to Firebase)
-                      console.log(`💾 Keeping local version of ${firebaseItem.id} (newer timestamp)`);
-                      // Local version is kept, but we should sync it back to Firebase
-                      if (isAuthenticated()) {
-                        syncEntityToFirebase(
-                          firebaseItem.id.includes('task') ? 'tasks' :
-                          firebaseItem.id.includes('habit') ? 'habits' :
-                          firebaseItem.id.includes('objective') ? 'objectives' :
-                          firebaseItem.id.includes('keyResult') ? 'keyResults' :
-                          firebaseItem.id.includes('lifeArea') ? 'lifeAreas' :
-                          firebaseItem.id.includes('timeSlot') ? 'timeSlots' :
-                          firebaseItem.id.includes('friend') ? 'friends' :
-                          'statusUpdates',
-                          localItem,
-                          localItem.id
-                        ).catch(err => console.error('Error syncing local version back:', err));
-                      }
-                    } else {
-                      // Same timestamp or no timestamp - Firebase wins (default behavior)
-                      merged.set(firebaseItem.id, firebaseItem);
-                    }
-                  }
-                });
-                
+                // Then add/update with Firebase items (Firebase wins on conflict)
+                firebase.forEach(item => merged.set(item.id, item));
                 return Array.from(merged.values());
               };
 
               if (syncResult.data.tasks.length > 0) {
-                const mergeTasks = createInitialMergeFunction('tasks');
-                setTasks(prev => mergeTasks(prev, syncResult.data.tasks));
+                setTasks(prev => mergeArrays(prev, syncResult.data.tasks));
               }
               if (syncResult.data.habits.length > 0) {
-                const mergeHabits = createInitialMergeFunction('habits');
-                setHabits(prev => mergeHabits(prev, syncResult.data.habits));
+                setHabits(prev => mergeArrays(prev, syncResult.data.habits));
               }
               if (syncResult.data.objectives.length > 0) {
-                const mergeObjectives = createInitialMergeFunction('objectives');
-                setObjectives(prev => mergeObjectives(prev, syncResult.data.objectives));
+                setObjectives(prev => mergeArrays(prev, syncResult.data.objectives));
               }
               if (syncResult.data.keyResults.length > 0) {
-                const mergeKeyResults = createInitialMergeFunction('keyResults');
-                setKeyResults(prev => mergeKeyResults(prev, syncResult.data.keyResults));
+                setKeyResults(prev => mergeArrays(prev, syncResult.data.keyResults));
               }
               if (syncResult.data.lifeAreas.length > 0) {
-                const mergeLifeAreas = createInitialMergeFunction('lifeAreas');
-                setLifeAreas(prev => mergeLifeAreas(prev, syncResult.data.lifeAreas));
+                setLifeAreas(prev => mergeArrays(prev, syncResult.data.lifeAreas));
               }
               if (syncResult.data.timeSlots.length > 0) {
-                const mergeTimeSlots = createInitialMergeFunction('timeSlots');
-                setTimeSlots(prev => mergeTimeSlots(prev, syncResult.data.timeSlots));
+                setTimeSlots(prev => mergeArrays(prev, syncResult.data.timeSlots));
               }
               if (syncResult.data.friends.length > 0) {
-                const mergeFriends = createInitialMergeFunction('friends');
-                setFriends(prev => mergeFriends(prev, syncResult.data.friends));
+                setFriends(prev => mergeArrays(prev, syncResult.data.friends));
               }
               if (syncResult.data.statusUpdates.length > 0) {
-                const mergeStatusUpdates = createInitialMergeFunction('statusUpdates');
-                setStatusUpdates(prev => mergeStatusUpdates(prev, syncResult.data.statusUpdates));
+                setStatusUpdates(prev => mergeArrays(prev, syncResult.data.statusUpdates));
               }
               if (syncResult.data.userProfile) {
                 setUserProfile(prev => ({ ...prev, ...syncResult.data.userProfile }));
@@ -493,106 +444,72 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         // Set up real-time listeners for each collection
         const unsubscribers: (() => void)[] = [];
 
-        // Watch for changes in Firebase - merge with local data using timestamps
-        // Helper function to merge arrays by ID, using timestamps to determine newest
-        // collectionName is passed to know which collection we're merging
-        const createMergeFunction = (collectionName: string) => {
-          return <T extends { id: string; updatedAt?: string; lastModified?: string }>(local: T[], firebase: T[]): T[] => {
-            const merged = new Map<string, T>();
-            
-            // First add all local items
-            local.forEach(item => merged.set(item.id, item));
-            
-            // Then merge Firebase items - use timestamp comparison
-            firebase.forEach(firebaseItem => {
-              const localItem = merged.get(firebaseItem.id);
-              
-              if (!localItem) {
-                // New item from Firebase, add it
-                merged.set(firebaseItem.id, firebaseItem);
-                console.log(`➕ New ${collectionName} from Firebase: ${firebaseItem.id}`);
-              } else {
-                // Both exist - compare timestamps
-                const firebaseTime = firebaseItem.updatedAt || firebaseItem.lastModified || '';
-                const localTime = localItem.updatedAt || localItem.lastModified || '';
-                
-                if (firebaseTime > localTime) {
-                  // Firebase is newer, use Firebase version
-                  console.log(`🔄 Real-time update: ${collectionName}/${firebaseItem.id} from Firebase (newer)`);
-                  merged.set(firebaseItem.id, firebaseItem);
-                } else if (localTime > firebaseTime) {
-                  // Local is newer, keep local version and sync back to Firebase
-                  console.log(`💾 Keeping local version: ${collectionName}/${firebaseItem.id} (local is newer)`);
-                  if (isAuthenticated()) {
-                    syncEntityToFirebase(collectionName, localItem, localItem.id)
-                      .catch(err => console.error(`Error syncing local ${collectionName} back:`, err));
-                  }
-                } else {
-                  // Same timestamp or no timestamp - Firebase wins (default behavior)
-                  merged.set(firebaseItem.id, firebaseItem);
-                }
-              }
-            });
-            
-            return Array.from(merged.values());
-          };
+        // Watch for changes in Firebase - merge with local data to avoid duplicates
+        // Helper function to merge arrays by ID, keeping Firebase version if both exist
+        const mergeArrays = <T extends { id: string }>(local: T[], firebase: T[]): T[] => {
+          const merged = new Map<string, T>();
+          // First add all local items
+          local.forEach(item => merged.set(item.id, item));
+          // Then add/update with Firebase items (Firebase wins on conflict)
+          firebase.forEach(item => merged.set(item.id, item));
+          return Array.from(merged.values());
         };
 
         unsubscribers.push(watchFirebaseChanges('tasks', (firebaseTasks) => {
           // Don't restore data if we're in the middle of clearing
           if (isClearingData) return;
-          console.log(`📡 Real-time update: ${firebaseTasks.length} tasks from Firebase`);
-          const mergeTasks = createMergeFunction('tasks');
-          setTasks(prev => mergeTasks(prev, firebaseTasks));
+          if (firebaseTasks.length > 0) {
+            setTasks(prev => mergeArrays(prev, firebaseTasks));
+          }
         }));
 
         unsubscribers.push(watchFirebaseChanges('objectives', (firebaseObjectives) => {
           if (isClearingData) return;
-          console.log(`📡 Real-time update: ${firebaseObjectives.length} objectives from Firebase`);
-          const mergeObjectives = createMergeFunction('objectives');
-          setObjectives(prev => mergeObjectives(prev, firebaseObjectives));
+          if (firebaseObjectives.length > 0) {
+            setObjectives(prev => mergeArrays(prev, firebaseObjectives));
+          }
         }));
 
         unsubscribers.push(watchFirebaseChanges('keyResults', (firebaseKeyResults) => {
           if (isClearingData) return;
-          console.log(`📡 Real-time update: ${firebaseKeyResults.length} keyResults from Firebase`);
-          const mergeKeyResults = createMergeFunction('keyResults');
-          setKeyResults(prev => mergeKeyResults(prev, firebaseKeyResults));
+          if (firebaseKeyResults.length > 0) {
+            setKeyResults(prev => mergeArrays(prev, firebaseKeyResults));
+          }
         }));
 
         unsubscribers.push(watchFirebaseChanges('timeSlots', (firebaseTimeSlots) => {
           if (isClearingData) return;
-          console.log(`📡 Real-time update: ${firebaseTimeSlots.length} timeSlots from Firebase`);
-          const mergeTimeSlots = createMergeFunction('timeSlots');
-          setTimeSlots(prev => mergeTimeSlots(prev, firebaseTimeSlots));
+          if (firebaseTimeSlots.length > 0) {
+            setTimeSlots(prev => mergeArrays(prev, firebaseTimeSlots));
+          }
         }));
 
         unsubscribers.push(watchFirebaseChanges('habits', (firebaseHabits) => {
           if (isClearingData) return;
-          console.log(`📡 Real-time update: ${firebaseHabits.length} habits from Firebase`);
-          const mergeHabits = createMergeFunction('habits');
-          setHabits(prev => mergeHabits(prev, firebaseHabits));
+          if (firebaseHabits.length > 0) {
+            setHabits(prev => mergeArrays(prev, firebaseHabits));
+          }
         }));
 
         unsubscribers.push(watchFirebaseChanges('lifeAreas', (firebaseLifeAreas) => {
           if (isClearingData) return;
-          console.log(`📡 Real-time update: ${firebaseLifeAreas.length} lifeAreas from Firebase`);
-          const mergeLifeAreas = createMergeFunction('lifeAreas');
-          setLifeAreas(prev => mergeLifeAreas(prev, firebaseLifeAreas));
+          if (firebaseLifeAreas.length > 0) {
+            setLifeAreas(prev => mergeArrays(prev, firebaseLifeAreas));
+          }
         }));
 
         unsubscribers.push(watchFirebaseChanges('friends', (firebaseFriends) => {
           if (isClearingData) return;
-          console.log(`📡 Real-time update: ${firebaseFriends.length} friends from Firebase`);
-          const mergeFriends = createMergeFunction('friends');
-          setFriends(prev => mergeFriends(prev, firebaseFriends));
+          if (firebaseFriends.length > 0) {
+            setFriends(prev => mergeArrays(prev, firebaseFriends));
+          }
         }));
 
         unsubscribers.push(watchFirebaseChanges('statusUpdates', (firebaseStatusUpdates) => {
           if (isClearingData) return;
-          console.log(`📡 Real-time update: ${firebaseStatusUpdates.length} statusUpdates from Firebase`);
-          const mergeStatusUpdates = createMergeFunction('statusUpdates');
-          setStatusUpdates(prev => mergeStatusUpdates(prev, firebaseStatusUpdates));
+          if (firebaseStatusUpdates.length > 0) {
+            setStatusUpdates(prev => mergeArrays(prev, firebaseStatusUpdates));
+          }
         }));
 
         // Cleanup function for unsubscribers
@@ -641,36 +558,23 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       updateTask(item);
       return;
     }
-    
-    // Add timestamp if not present
-    const taskWithTimestamp = {
-      ...item,
-      lastModified: item.lastModified || new Date().toISOString(),
-    };
-    
-    setTasks([...tasks, taskWithTimestamp]);
+    setTasks([...tasks, item]);
     // Auto-sync to Google Tasks
-    syncService.queueSync('task', 'create', taskWithTimestamp.id, taskWithTimestamp);
+    syncService.queueSync('task', 'create', item.id, item);
     // Auto-sync to Firebase (async, fire and forget)
     if (isAuthenticated()) {
-      syncEntityToFirebase('tasks', taskWithTimestamp, taskWithTimestamp.id).catch(error => {
+      syncEntityToFirebase('tasks', item, item.id).catch(error => {
         console.error('Error syncing task to Firebase:', error);
       });
     }
   };
   const updateTask = (item: Task) => {
-    // Update timestamp
-    const taskWithTimestamp = {
-      ...item,
-      lastModified: new Date().toISOString(),
-    };
-    
-    setTasks(tasks.map(t => t.id === taskWithTimestamp.id ? taskWithTimestamp : t));
+    setTasks(tasks.map(t => t.id === item.id ? item : t));
     // Auto-sync to Google Tasks
-    syncService.queueSync('task', 'update', taskWithTimestamp.id, taskWithTimestamp);
+    syncService.queueSync('task', 'update', item.id, item);
     // Auto-sync to Firebase (async, fire and forget)
     if (isAuthenticated()) {
-      syncEntityToFirebase('tasks', taskWithTimestamp, taskWithTimestamp.id).catch(error => {
+      syncEntityToFirebase('tasks', item, item.id).catch(error => {
         console.error('Error syncing task to Firebase:', error);
       });
     }

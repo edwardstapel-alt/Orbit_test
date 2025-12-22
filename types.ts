@@ -226,6 +226,51 @@ export interface DayPart {
   order: number;
 }
 
+// Notifications & Reminders
+export interface Reminder {
+  id: string;
+  entityType: EntityType; // 'task' | 'habit' | 'objective' | 'timeSlot'
+  entityId: string; // ID van de gekoppelde entiteit
+  title: string; // Titel van de reminder (meestal entiteit titel)
+  scheduledTime: string; // ISO timestamp wanneer reminder moet worden getoond
+  offsetMinutes: number; // Hoeveel minuten voor de scheduledTime (bijv. -15 voor 15 minuten ervoor)
+  completed: boolean; // Of de reminder al is getoond/afgehandeld
+  createdAt: string; // ISO timestamp wanneer reminder is aangemaakt
+  updatedAt: string; // ISO timestamp laatste update
+}
+
+export interface Notification {
+  id: string;
+  type: 'reminder' | 'achievement' | 'system' | 'social';
+  title: string;
+  message: string;
+  icon: string; // Material icon name
+  color: string; // Hex color voor icon background
+  read: boolean;
+  createdAt: string; // ISO timestamp
+  actionUrl?: string; // Optionele link naar gerelateerde entiteit/view
+  entityType?: EntityType;
+  entityId?: string;
+  reminderId?: string; // Link naar Reminder als type === 'reminder'
+}
+
+export interface NotificationSettings {
+  enabled: boolean; // Globale notificatie toggle
+  browserNotifications: boolean; // Web browser notifications
+  soundEnabled: boolean; // Geluid bij notificaties
+  reminderDefaults: {
+    task: number; // Default offset in minuten voor tasks (bijv. 15)
+    habit: number; // Default offset voor habits
+    objective: number; // Default offset voor objectives
+    timeSlot: number; // Default offset voor timeSlots
+  };
+  quietHours: {
+    enabled: boolean;
+    startTime: string; // HH:mm (bijv. "22:00")
+    endTime: string; // HH:mm (bijv. "08:00")
+  };
+}
+
 export interface DataContextType {
   userProfile: UserProfile;
   tasks: Task[];
@@ -244,6 +289,9 @@ export interface DataContextType {
   timeSlots: TimeSlot[];
   dayParts: DayPart[];
   statusUpdates: StatusUpdate[];
+  reminders: Reminder[];
+  notifications: Notification[];
+  notificationSettings: NotificationSettings;
   
   updateUserProfile: (profile: Partial<UserProfile>) => void;
   
@@ -322,6 +370,22 @@ export interface DataContextType {
   setAccentColor: (color: string) => void;
   setDarkMode: (enabled: boolean) => void;
   setShowCategory: (enabled: boolean) => void;
+
+  // Notifications & Reminders
+  addReminder: (reminder: Reminder) => void;
+  updateReminder: (reminder: Reminder) => void;
+  deleteReminder: (id: string) => void;
+  getRemindersByEntity: (entityType: EntityType, entityId: string) => Reminder[];
+  getUpcomingReminders: (limit?: number) => Reminder[];
+  
+  addNotification: (notification: Notification) => void;
+  updateNotification: (notification: Notification) => void;
+  deleteNotification: (id: string) => void;
+  markNotificationAsRead: (id: string) => void;
+  markAllNotificationsAsRead: () => void;
+  getUnreadNotificationsCount: () => number;
+  
+  updateNotificationSettings: (settings: Partial<NotificationSettings>) => void;
 
   clearAllData: () => Promise<void>;
   restoreExampleData: () => void;

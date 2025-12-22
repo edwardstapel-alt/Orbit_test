@@ -201,72 +201,72 @@ export const GoalTimeline: React.FC<GoalTimelineProps> = ({
         <div className="flex items-center gap-2">
           {/* Life Area Filter - Compact */}
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar flex-1 min-w-0">
-            <button
-              onClick={() => setSelectedLifeArea('all')}
+          <button
+            onClick={() => setSelectedLifeArea('all')}
               className={`px-3 py-1.5 rounded-lg text-[10px] font-bold whitespace-nowrap transition-all ${
-                selectedLifeArea === 'all' 
+              selectedLifeArea === 'all' 
+                ? 'bg-primary text-white shadow-sm' 
+                : 'bg-white text-text-tertiary hover:bg-gray-50'
+            }`}
+          >
+              All
+          </button>
+          {lifeAreas.map(la => (
+            <button
+              key={la.id}
+              onClick={() => setSelectedLifeArea(la.id)}
+                className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold whitespace-nowrap transition-all flex items-center gap-1 ${
+                selectedLifeArea === la.id 
                   ? 'bg-primary text-white shadow-sm' 
                   : 'bg-white text-text-tertiary hover:bg-gray-50'
               }`}
-            >
-              All
-            </button>
-            {lifeAreas.map(la => (
-              <button
-                key={la.id}
-                onClick={() => setSelectedLifeArea(la.id)}
-                className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold whitespace-nowrap transition-all flex items-center gap-1 ${
-                  selectedLifeArea === la.id 
-                    ? 'bg-primary text-white shadow-sm' 
-                    : 'bg-white text-text-tertiary hover:bg-gray-50'
-                }`}
                 title={la.name}
-              >
-                {la.icon && (
-                  <span 
+            >
+              {la.icon && (
+                <span 
                     className="material-symbols-outlined text-[14px]"
-                    style={{ color: selectedLifeArea === la.id ? 'white' : la.color }}
-                  >
-                    {la.icon}
-                  </span>
-                )}
+                  style={{ color: selectedLifeArea === la.id ? 'white' : la.color }}
+                >
+                  {la.icon}
+                </span>
+              )}
                 <span className="hidden sm:inline">{la.name}</span>
-              </button>
-            ))}
-          </div>
+            </button>
+          ))}
+        </div>
 
           {/* Time Range Filter - Compact */}
           <div className="flex items-center gap-1 bg-white rounded-lg p-0.5 flex-shrink-0">
-            <button
-              onClick={() => setTimeRange('year')}
+          <button
+            onClick={() => setTimeRange('year')}
               className={`px-2.5 py-1 rounded text-[10px] font-bold transition-all ${
-                timeRange === 'year' 
-                  ? 'bg-primary text-white' 
-                  : 'text-text-tertiary hover:bg-gray-50'
-              }`}
-            >
+              timeRange === 'year' 
+                ? 'bg-primary text-white' 
+                : 'text-text-tertiary hover:bg-gray-50'
+            }`}
+          >
               Y
-            </button>
-            <button
-              onClick={() => setTimeRange('quarter')}
+          </button>
+          <button
+            onClick={() => setTimeRange('quarter')}
               className={`px-2.5 py-1 rounded text-[10px] font-bold transition-all ${
-                timeRange === 'quarter' 
-                  ? 'bg-primary text-white' 
-                  : 'text-text-tertiary hover:bg-gray-50'
-              }`}
-            >
+              timeRange === 'quarter' 
+                ? 'bg-primary text-white' 
+                : 'text-text-tertiary hover:bg-gray-50'
+            }`}
+          >
               Q
-            </button>
-            <button
-              onClick={() => setTimeRange('month')}
+          </button>
+          <button
+            onClick={() => setTimeRange('month')}
               className={`px-2.5 py-1 rounded text-[10px] font-bold transition-all ${
-                timeRange === 'month' 
-                  ? 'bg-primary text-white' 
-                  : 'text-text-tertiary hover:bg-gray-50'
-              }`}
-            >
+              timeRange === 'month' 
+                ? 'bg-primary text-white' 
+                : 'text-text-tertiary hover:bg-gray-50'
+            }`}
+          >
               M
-            </button>
+          </button>
           </div>
         </div>
       </div>
@@ -345,16 +345,16 @@ export const GoalTimeline: React.FC<GoalTimelineProps> = ({
               );
               
               return (
-                <div className="space-y-4">
+            <div className="space-y-4">
                   {groupedItems.map(({ objective, keyResults }) => {
                     const objPosition = calculateBarPosition(objective);
                     if (!objPosition) return null;
-                    
+
                     const lifeArea = getLifeAreaById(objective.lifeAreaId);
                     const objColor = objective.timelineColor || lifeArea?.color || '#D95829';
                     const isAtRisk = objective.status === 'At Risk' || objective.status === 'Off Track';
-                    
-                    return (
+
+                return (
                       <div key={objective.id} className="space-y-2">
                         {/* Objective */}
                         <div className="group">
@@ -367,7 +367,7 @@ export const GoalTimeline: React.FC<GoalTimelineProps> = ({
                                   toggleObjective(objective.id);
                                 }}
                                 className="flex-shrink-0 size-6 flex items-center justify-center rounded hover:bg-gray-100 transition-colors"
-                              >
+                  >
                                 <span className={`material-symbols-outlined text-base text-text-tertiary transition-transform ${
                                   expandedObjectives.has(objective.id) ? 'rotate-90' : ''
                                 }`}>
@@ -377,28 +377,28 @@ export const GoalTimeline: React.FC<GoalTimelineProps> = ({
                             )}
                             {keyResults.length === 0 && <div className="w-6" />}
                             
-                            {lifeArea?.icon && (
-                              <span 
+                      {lifeArea?.icon && (
+                        <span 
                                 className="material-symbols-outlined text-base flex-shrink-0"
-                                style={{ color: lifeArea.color }}
-                              >
-                                {lifeArea.icon}
-                              </span>
-                            )}
+                          style={{ color: lifeArea.color }}
+                        >
+                          {lifeArea.icon}
+                        </span>
+                      )}
                             <div 
                               className="flex-1 min-w-0 cursor-pointer"
                               onClick={() => onViewObjective && onViewObjective(objective.id)}
                             >
-                              <h3 className="text-sm font-semibold text-text-main truncate group-hover:text-primary transition-colors">
+                        <h3 className="text-sm font-semibold text-text-main truncate group-hover:text-primary transition-colors">
                                 {objective.title}
-                              </h3>
+                        </h3>
                             </div>
                             {isAtRisk && (
                               <span className={`text-[10px] font-bold flex-shrink-0 ${
                                 objective.status === 'Off Track' ? 'text-red-500' : 'text-orange-500'
                               }`}>
                                 {objective.status === 'Off Track' ? '🔴' : '⚠️'}
-                              </span>
+                          </span>
                             )}
                           </div>
                           
@@ -423,8 +423,8 @@ export const GoalTimeline: React.FC<GoalTimelineProps> = ({
                                   width: `${(objPosition.width * objective.progress) / 100}%`,
                                 }}
                               />
-                            )}
-                          </div>
+                          )}
+                        </div>
                           
                           {/* Date Range */}
                           <div 
@@ -437,9 +437,9 @@ export const GoalTimeline: React.FC<GoalTimelineProps> = ({
                             <span className="text-[9px] text-text-tertiary">
                               {new Date(objective.endDate).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}
                             </span>
-                          </div>
-                        </div>
-                        
+                      </div>
+                    </div>
+                    
                         {/* Key Results under this objective - Only show if expanded */}
                         {keyResults.length > 0 && expandedObjectives.has(objective.id) && (
                           <div className="ml-6 space-y-2 pl-4 border-l-2 border-gray-200 animate-fade-in">
@@ -480,12 +480,12 @@ export const GoalTimeline: React.FC<GoalTimelineProps> = ({
                                   <div className="relative h-4 bg-gray-50 rounded overflow-hidden">
                                     <div
                                       className="absolute h-full rounded transition-all group-hover:opacity-90"
-                                      style={{
+                        style={{
                                         left: `${krPosition.left}%`,
                                         width: `${krPosition.width}%`,
                                         backgroundColor: krColor,
                                         opacity: 0.7
-                                      }}
+                        }}
                                     />
                                     {kr.progress !== undefined && kr.progress > 0 && (
                                       <div
@@ -505,7 +505,7 @@ export const GoalTimeline: React.FC<GoalTimelineProps> = ({
                                     </span>
                                     <span className="text-[8px] text-text-tertiary">
                                       {new Date(kr.endDate).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}
-                                    </span>
+                          </span>
                                   </div>
                                 </div>
                               );
@@ -540,11 +540,11 @@ export const GoalTimeline: React.FC<GoalTimelineProps> = ({
                                   width: `${krPosition.width}%`,
                                 }}
                               />
-                            </div>
-                          </div>
-                        );
-                      })}
                     </div>
+                  </div>
+                );
+              })}
+            </div>
                   )}
                 </div>
               );
