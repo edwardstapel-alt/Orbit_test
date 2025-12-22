@@ -9,8 +9,11 @@ import {
   exportTaskToGoogleTasks,
   exportFriendToGoogleContacts,
   importGoogleContacts,
-  getGoogleTaskLists
+  getGoogleTaskLists,
+  importGoogleTasks
 } from '../utils/googleSync';
+import { syncService } from '../utils/syncService';
+import { View } from '../types';
 
 declare global {
     interface Window {
@@ -21,9 +24,10 @@ declare global {
 
 interface SyncedAccountsProps {
   onBack: () => void;
+  onNavigate?: (view: any) => void;
 }
 
-export const SyncedAccounts: React.FC<SyncedAccountsProps> = ({ onBack }) => {
+export const SyncedAccounts: React.FC<SyncedAccountsProps> = ({ onBack, onNavigate }) => {
   const { 
     updateUserProfile, 
     addTask, 
@@ -37,7 +41,8 @@ export const SyncedAccounts: React.FC<SyncedAccountsProps> = ({ onBack }) => {
     updateFriend,
     addFriend,
     getSyncQueueStatus,
-    triggerSync
+    triggerSync,
+    importTasksFromGoogle
   } = useData();
   const [googleConnected, setGoogleConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -491,6 +496,15 @@ export const SyncedAccounts: React.FC<SyncedAccountsProps> = ({ onBack }) => {
                             <span className="material-symbols-outlined text-base">refresh</span>
                             Handmatig Sync Nu
                         </button>
+                        {onNavigate && (
+                            <button
+                                onClick={() => onNavigate(View.CONFLICT_MANAGEMENT)}
+                                className="w-full py-2 px-4 border-2 border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold rounded-xl transition-colors text-sm flex items-center justify-center gap-2"
+                            >
+                                <span className="material-symbols-outlined text-base">warning</span>
+                                Conflict Beheer
+                            </button>
+                        )}
                     </div>
                 </div>
                 
@@ -687,6 +701,56 @@ export const SyncedAccounts: React.FC<SyncedAccountsProps> = ({ onBack }) => {
                         >
                             <span className="material-symbols-outlined text-base">upload</span>
                             Export Tasks ({tasks.length})
+                        </button>
+                    </div>
+                </div>
+
+                {/* Import from Google Tasks */}
+                <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-slate-100">
+                    <div className="p-4 border-b border-gray-100">
+                        <div className="flex items-center gap-3 mb-3">
+                            <div className="size-10 rounded-full bg-orange-50 flex items-center justify-center text-orange-600">
+                                <span className="material-symbols-outlined">download</span>
+                            </div>
+                            <div className="flex-1">
+                                <p className="text-sm font-bold text-text-main">Google Tasks Import</p>
+                                <p className="text-[10px] text-text-tertiary">Importeer Google Tasks naar de app</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="p-4 space-y-3">
+                        <button
+                            onClick={async () => {
+                                const token = getAccessToken();
+                                if (!token) {
+                                    alert('Niet verbonden met Google. Verbind opnieuw.');
+                                    return;
+                                }
+                                
+                                setIsLoading(true);
+                                setSyncStatus('Google Tasks importeren...');
+                                
+                                try {
+                                    const result = await importTasksFromGoogle();
+                                    setSyncStatus(`Import voltooid: ${result.imported} nieuw, ${result.updated} bijgewerkt, ${result.conflicts} conflicten`);
+                                    
+                                    if (result.imported > 0 || result.updated > 0) {
+                                        alert(`✓ Import succesvol!\n\n${result.imported} nieuwe task(s)\n${result.updated} bijgewerkte task(s)${result.conflicts > 0 ? `\n${result.conflicts} conflict(en) gedetecteerd` : ''}`);
+                                    } else {
+                                        alert('Geen nieuwe of bijgewerkte tasks gevonden.');
+                                    }
+                                } catch (error: any) {
+                                    setSyncStatus(`Import mislukt: ${error.message}`);
+                                    alert(`Import mislukt: ${error.message}`);
+                                } finally {
+                                    setIsLoading(false);
+                                }
+                            }}
+                            disabled={isLoading}
+                            className="w-full py-2.5 px-4 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-colors text-sm flex items-center justify-center gap-2"
+                        >
+                            <span className="material-symbols-outlined text-base">download</span>
+                            Importeer Google Tasks
                         </button>
                     </div>
                 </div>

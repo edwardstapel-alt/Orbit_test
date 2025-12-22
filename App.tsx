@@ -25,6 +25,7 @@ import { Calendar } from './views/Calendar';
 import { UnifiedSearch } from './components/UnifiedSearch';
 import { Statistics } from './views/Statistics';
 import { FirebaseAuth } from './views/FirebaseAuth';
+import { ConflictManagement } from './views/ConflictManagement';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<View>(View.DASHBOARD);
@@ -222,13 +223,15 @@ export default function App() {
       case View.PROFILE:
         return <PersonalSettings onBack={navigateBack} />;
       case View.SYNCED_ACCOUNTS:
-        return <SyncedAccounts onBack={navigateBackToSettings} />;
+        return <SyncedAccounts onBack={navigateBackToSettings} onNavigate={navigateTo} />;
       case View.TEAM_SETTINGS:
         return <TeamSettings onBack={navigateBackToSettings} />;
       case View.DATA_MANAGEMENT:
         return <DataManagement onBack={navigateBackToSettings} />;
       case View.FIREBASE_AUTH:
         return <FirebaseAuth onBack={navigateBackToSettings} onAuthenticated={() => navigateBackToSettings()} />;
+      case View.CONFLICT_MANAGEMENT:
+        return <ConflictManagement onNavigate={navigateTo} onMenuClick={openMenu} onProfileClick={openProfile} />;
       case View.DAY_PARTS_SETTINGS:
         return <DayPartsSettings onBack={navigateBackToSettings} onNavigate={navigateTo} />;
       case View.NOTIFICATIONS:
@@ -332,6 +335,7 @@ export default function App() {
     currentView !== View.DATA_MANAGEMENT && 
     currentView !== View.DAY_PARTS_SETTINGS &&
     currentView !== View.NOTIFICATIONS &&
+    currentView !== View.CONFLICT_MANAGEMENT &&
     currentView !== View.OBJECTIVE_DETAIL &&
     currentView !== View.MAP &&
     currentView !== View.EDITOR &&

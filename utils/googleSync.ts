@@ -508,6 +508,303 @@ export const exportFriendToGoogleContacts = async (
 };
 
 /**
+ * Import Google Tasks naar app
+ */
+export const importGoogleTasks = async (
+  accessToken: string,
+  taskListId?: string,
+  dateRange?: { start: Date; end: Date }
+): Promise<{ success: boolean; tasks?: any[]; error?: string }> => {
+  try {
+    // Haal task lists op
+    const listsResult = await getGoogleTaskLists(accessToken);
+    if (!listsResult.success || !listsResult.taskLists) {
+      return { success: false, error: 'Failed to fetch task lists' };
+    }
+
+    const listsToImport = taskListId 
+      ? listsResult.taskLists.filter(list => list.id === taskListId)
+      : listsResult.taskLists;
+
+    const importedTasks: any[] = [];
+
+    for (const list of listsToImport) {
+      // Haal tasks op van deze list
+      const tasksResult = await fetchGoogleTasks(accessToken, list.id, dateRange);
+      if (tasksResult.success && tasksResult.tasks) {
+        for (const googleTask of tasksResult.tasks) {
+          // Map Google Task naar app Task
+          const appTask = mapGoogleTaskToAppTask(googleTask, list.id);
+          importedTasks.push(appTask);
+        }
+      }
+    }
+
+    return { success: true, tasks: importedTasks };
+  } catch (error: any) {
+    console.error('Error importing Google Tasks:', error);
+    return { success: false, error: error.message || 'Unknown error' };
+  }
+};
+
+/**
+ * Haal Google Tasks op van specifieke task list
+ */
+const fetchGoogleTasks = async (
+  accessToken: string,
+  taskListId: string,
+  dateRange?: { start: Date; end: Date }
+): Promise<{ success: boolean; tasks?: any[]; error?: string }> => {
+  try {
+    const url = `https://tasks.googleapis.com/tasks/v1/lists/${taskListId}/tasks`;
+    
+    const params = new URLSearchParams({
+      showCompleted: 'true',
+      showHidden: 'false',
+      maxResults: '100',
+    });
+
+    if (dateRange) {
+      // Filter op due date range
+      params.append('dueMin', dateRange.start.toISOString());
+      params.append('dueMax', dateRange.end.toISOString());
+    }
+
+    const response = await fetch(`${url}?${params}`, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `Tasks API error: ${response.status}`;
+      try {
+        const error = JSON.parse(errorText);
+        errorMessage = error.error?.message || errorMessage;
+      } catch (e) {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+    return { success: true, tasks: data.items || [] };
+  } catch (error: any) {
+    console.error('Error fetching Google Tasks:', error);
+    return { success: false, error: error.message || 'Unknown error' };
+  }
+};
+
+/**
+ * Map Google Task naar app Task
+ */
+const mapGoogleTaskToAppTask = (googleTask: any, taskListId: string): any => {
+  const task: any = {
+    id: `gt-${googleTask.id}`, // Prefix om Google Tasks te identificeren
+    title: googleTask.title || '',
+    tag: 'Work', // Default tag, kan later worden aangepast
+    completed: googleTask.status === 'completed',
+    priority: false, // Google Tasks heeft geen directe priority field
+    googleTaskId: googleTask.id,
+    syncMetadata: {
+      lastSyncedAt: new Date().toISOString(),
+      syncStatus: 'synced',
+      externalId: googleTask.id,
+      externalService: 'google_tasks',
+      syncDirection: 'import',
+      externalLastModified: googleTask.updated || googleTask.updated || new Date().toISOString(),
+    },
+  };
+
+  // Map due date
+  if (googleTask.due) {
+    const dueDate = new Date(googleTask.due);
+    task.scheduledDate = dueDate.toISOString().split('T')[0]; // YYYY-MM-DD
+    
+    // Als er een tijd is, voeg die toe
+    if (googleTask.due.includes('T')) {
+      const time = dueDate.toTimeString().slice(0, 5); // HH:mm
+      task.scheduledTime = time;
+    }
+  }
+
+  // Map notes
+  if (googleTask.notes) {
+    // Notes kunnen worden opgeslagen in description veld (als dat bestaat)
+    task.description = googleTask.notes;
+  }
+
+  // Map parent task (voor subtasks)
+  if (googleTask.parent) {
+    // Link naar parent task via parentTaskId (als dat veld bestaat)
+    task.parentTaskId = `gt-${googleTask.parent}`;
+  }
+
+  return task;
+};
+
+/**
+ * Detecteer duplicates tussen app tasks en Google Tasks
+ */
+export const detectDuplicateTasks = (
+  appTasks: any[],
+  googleTasks: any[]
+): Array<{ appTask: any; googleTask: any; matchType: 'id' | 'title+date' | 'title' }> => {
+  const duplicates: Array<{ appTask: any; googleTask: any; matchType: string }> = [];
+
+  for (const appTask of appTasks) {
+    // Match op Google Task ID
+    if (appTask.googleTaskId) {
+      const googleTask = googleTasks.find(gt => gt.id === appTask.googleTaskId);
+      if (googleTask) {
+        duplicates.push({ appTask, googleTask, matchType: 'id' });
+        continue;
+      }
+    }
+
+    // Match op title + scheduledDate
+    if (appTask.scheduledDate) {
+      const googleTask = googleTasks.find(gt => {
+        const gtDue = gt.due ? new Date(gt.due).toISOString().split('T')[0] : null;
+        return gt.title === appTask.title && gtDue === appTask.scheduledDate;
+      });
+      if (googleTask) {
+        duplicates.push({ appTask, googleTask, matchType: 'title+date' });
+        continue;
+      }
+    }
+
+    // Match op title alleen (zwakke match)
+    const googleTask = googleTasks.find(gt => gt.title === appTask.title);
+    if (googleTask) {
+      duplicates.push({ appTask, googleTask, matchType: 'title' });
+    }
+  }
+
+  return duplicates;
+};
+
+/**
+ * Detecteer duplicates tussen app tasks en geïmporteerde app tasks (na mapping)
+ */
+export const detectDuplicateAppTasks = (
+  existingTasks: any[],
+  importedTasks: any[]
+): Array<{ existing: any; imported: any; matchType: 'id' | 'title+date' | 'title' }> => {
+  const duplicates: Array<{ existing: any; imported: any; matchType: string }> = [];
+
+  for (const existing of existingTasks) {
+    // Match op Google Task ID
+    if (existing.googleTaskId) {
+      const imported = importedTasks.find(it => it.googleTaskId === existing.googleTaskId);
+      if (imported) {
+        duplicates.push({ existing, imported, matchType: 'id' });
+        continue;
+      }
+    }
+
+    // Match op title + scheduledDate
+    if (existing.scheduledDate) {
+      const imported = importedTasks.find(it => 
+        it.title === existing.title && it.scheduledDate === existing.scheduledDate
+      );
+      if (imported) {
+        duplicates.push({ existing, imported, matchType: 'title+date' });
+        continue;
+      }
+    }
+
+    // Match op title alleen (zwakke match)
+    const imported = importedTasks.find(it => it.title === existing.title);
+    if (imported) {
+      duplicates.push({ existing, imported, matchType: 'title' });
+    }
+  }
+
+  return duplicates;
+};
+
+/**
+ * Merge app task met Google Task (raw Google Task object)
+ */
+export const mergeTasks = (appTask: any, googleTask: any, strategy: 'app' | 'google' | 'merge'): any => {
+  if (strategy === 'app') {
+    return { ...appTask, googleTaskId: googleTask.id || appTask.googleTaskId };
+  }
+  
+  if (strategy === 'google') {
+    const merged = mapGoogleTaskToAppTask(googleTask, '@default');
+    return { ...merged, id: appTask.id };
+  }
+
+  // Merge strategie: combineer beide
+  return {
+    ...appTask,
+    // Behoud app ID
+    id: appTask.id,
+    // Gebruik Google Task ID als die bestaat
+    googleTaskId: googleTask.id || appTask.googleTaskId,
+    // Combineer titles (als verschillend)
+    title: appTask.title !== googleTask.title 
+      ? `${appTask.title} / ${googleTask.title}` 
+      : appTask.title,
+    // Gebruik meest recente completion status
+    completed: appTask.completed || googleTask.status === 'completed',
+    // Gebruik meest recente scheduled date
+    scheduledDate: googleTask.due 
+      ? new Date(googleTask.due).toISOString().split('T')[0] 
+      : appTask.scheduledDate,
+    // Update sync metadata
+    syncMetadata: {
+      ...appTask.syncMetadata,
+      lastSyncedAt: new Date().toISOString(),
+      syncStatus: 'synced',
+      syncDirection: 'bidirectional',
+    },
+  };
+};
+
+/**
+ * Merge twee app tasks (beide zijn al gemapped)
+ */
+export const mergeAppTasks = (existingTask: any, importedTask: any, strategy: 'app' | 'google' | 'merge'): any => {
+  if (strategy === 'app') {
+    return { ...existingTask, googleTaskId: importedTask.googleTaskId || existingTask.googleTaskId };
+  }
+  
+  if (strategy === 'google') {
+    return { ...importedTask, id: existingTask.id };
+  }
+
+  // Merge strategie: combineer beide
+  return {
+    ...existingTask,
+    // Behoud bestaande ID
+    id: existingTask.id,
+    // Gebruik Google Task ID van geïmporteerde task
+    googleTaskId: importedTask.googleTaskId || existingTask.googleTaskId,
+    // Combineer titles (als verschillend)
+    title: existingTask.title !== importedTask.title 
+      ? `${existingTask.title} / ${importedTask.title}` 
+      : existingTask.title,
+    // Gebruik meest recente completion status
+    completed: existingTask.completed || importedTask.completed,
+    // Gebruik meest recente scheduled date
+    scheduledDate: importedTask.scheduledDate || existingTask.scheduledDate,
+    scheduledTime: importedTask.scheduledTime || existingTask.scheduledTime,
+    // Update sync metadata
+    syncMetadata: {
+      ...existingTask.syncMetadata,
+      lastSyncedAt: new Date().toISOString(),
+      syncStatus: 'synced',
+      syncDirection: 'bidirectional',
+      externalLastModified: importedTask.syncMetadata?.externalLastModified || existingTask.syncMetadata?.externalLastModified,
+    },
+  };
+};
+
+/**
  * Import Google Contacts
  */
 export const importGoogleContacts = async (

@@ -21,7 +21,8 @@ export enum View {
   TODAY = 'TODAY', // Enhanced Today view
   DAY_PARTS_SETTINGS = 'DAY_PARTS_SETTINGS', // Day Parts Configuration
   STATISTICS = 'STATISTICS', // Statistics Dashboard
-  FIREBASE_AUTH = 'FIREBASE_AUTH' // Firebase Authentication
+  FIREBASE_AUTH = 'FIREBASE_AUTH', // Firebase Authentication
+  CONFLICT_MANAGEMENT = 'CONFLICT_MANAGEMENT' // Conflict Management
 }
 
 export type EntityType = 'task' | 'habit' | 'friend' | 'objective' | 'keyResult' | 'place' | 'lifeArea' | 'vision' | 'timeSlot';
@@ -59,14 +60,67 @@ export interface TeamMember {
 // Sync Metadata
 export interface SyncMetadata {
   lastSyncedAt?: string; // ISO timestamp
-  syncStatus: 'synced' | 'pending' | 'conflict' | 'error';
+  syncStatus: 'synced' | 'pending' | 'syncing' | 'conflict' | 'error';
   externalId?: string; // ID in external service
   externalService: 'google_calendar' | 'google_tasks' | 'google_contacts' | 'asana';
-  conflictDetails?: {
-    field: string;
-    appValue: any;
-    externalValue: any;
-  }[];
+  syncVersion?: number; // Versie nummer voor conflict detection
+  syncDirection?: 'export' | 'import' | 'bidirectional';
+  syncErrors?: string[]; // Lijst van sync errors
+  conflictDetails?: ConflictDetails;
+  appLastModified?: string; // ISO timestamp laatste wijziging in app
+  externalLastModified?: string; // ISO timestamp laatste wijziging in externe service
+}
+
+// Conflict Details
+export interface ConflictDetails {
+  field: string;
+  appValue: any;
+  externalValue: any;
+}
+
+// Conflict interface
+export interface Conflict {
+  id: string;
+  entityType: 'task' | 'timeSlot' | 'objective' | 'friend';
+  entityId: string;
+  service: 'google_calendar' | 'google_tasks' | 'google_contacts' | 'asana';
+  appValue: any; // Huidige waarde in app
+  externalValue: any; // Huidige waarde in externe service
+  conflictFields: FieldDifference[]; // Welke velden conflicteren
+  appLastModified: string; // ISO timestamp
+  externalLastModified: string; // ISO timestamp
+  detectedAt: string; // ISO timestamp wanneer conflict gedetecteerd is
+  resolvedAt?: string; // ISO timestamp wanneer conflict opgelost is
+  resolution?: ConflictResolution;
+  priority: 'low' | 'medium' | 'high'; // Prioriteit van conflict
+}
+
+// Field difference details
+export interface FieldDifference {
+  field: string; // Naam van het veld
+  appValue: any; // Waarde in app
+  externalValue: any; // Waarde in externe service
+  fieldType: 'string' | 'number' | 'boolean' | 'date' | 'array' | 'object';
+  canMerge: boolean; // Of velden kunnen worden gemerged
+}
+
+// Conflict resolution strategie
+export interface ConflictResolution {
+  strategy: 'app_wins' | 'external_wins' | 'last_write_wins' | 'merge' | 'manual';
+  resolvedBy?: string; // User ID of 'system'
+  resolvedAt: string; // ISO timestamp
+  finalValue?: any; // Finale waarde na resolutie
+  mergedFields?: { [field: string]: any }; // Voor merge strategie
+}
+
+// Conflict resolution configuratie
+export interface ConflictResolutionConfig {
+  defaultStrategy: 'app_wins' | 'external_wins' | 'last_write_wins' | 'merge' | 'manual';
+  autoResolve: boolean; // Automatisch oplossen zonder user input
+  notifyOnConflict: boolean; // Notificatie bij conflict
+  perServiceStrategy?: {
+    [service: string]: 'app_wins' | 'external_wins' | 'last_write_wins' | 'merge' | 'manual';
+  };
 }
 
 export interface Task {
@@ -395,4 +449,20 @@ export interface DataContextType {
   triggerSync: () => Promise<void>;
   getSyncConfig: () => any;
   updateSyncConfig: (config: Partial<any>) => void;
+  
+  // Conflict management
+  conflicts: Conflict[];
+  getConflicts: () => Conflict[];
+  getConflictsByType: (entityType: Conflict['entityType']) => Conflict[];
+  getConflictsByService: (service: Conflict['service']) => Conflict[];
+  detectConflicts: () => Promise<Conflict[]>;
+  resolveConflict: (conflictId: string, strategy?: ConflictResolution['strategy']) => Promise<void>;
+  autoResolveConflicts: () => Promise<void>;
+  updateConflictResolutionConfig: (config: Partial<ConflictResolutionConfig>) => void;
+  
+  // Import functions
+  importTasksFromGoogle: (taskListIds?: string[]) => Promise<{ imported: number; updated: number; conflicts: number }>;
+  importTimeSlotsFromCalendar: (calendarIds?: string[]) => Promise<{ imported: number; updated: number; conflicts: number }>;
+  startAutoImport: (intervalMinutes?: number) => Promise<void>;
+  stopAutoImport: () => void;
 }

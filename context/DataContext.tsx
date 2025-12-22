@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Task, Habit, Friend, Objective, KeyResult, Place, TeamMember, DataContextType, UserProfile, LifeArea, Vision, TimeSlot, DayPart, StatusUpdate } from '../types';
+import { Task, Habit, Friend, Objective, KeyResult, Place, TeamMember, DataContextType, UserProfile, LifeArea, Vision, TimeSlot, DayPart, StatusUpdate, Conflict, ConflictResolution, ConflictResolutionConfig } from '../types';
 import { syncService } from '../utils/syncService';
+import { importGoogleTasks, detectDuplicateAppTasks, mergeAppTasks, getAccessToken } from '../utils/googleSync';
 import { isAuthenticated, onAuthStateChange } from '../utils/firebaseAuth';
 import { syncEntityToFirebase, syncAllFromFirebase, syncAllToFirebase, watchFirebaseChanges, deleteEntityFromFirebase, deleteAllUserDataFromFirebase } from '../utils/firebaseSync';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
@@ -1171,7 +1172,79 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       getSyncQueueStatus: () => syncService.getQueueStatus(),
       triggerSync: async () => { await syncService.triggerSync(); },
       getSyncConfig: () => syncService.getConfig(),
-      updateSyncConfig: (config: Partial<any>) => syncService.updateConfig(config)
+      updateSyncConfig: (config: Partial<any>) => syncService.updateConfig(config),
+      
+      // Conflict management
+      conflicts: syncService.getConflicts(),
+      getConflicts: () => syncService.getConflicts(),
+      getConflictsByType: (entityType: Conflict['entityType']) => syncService.getConflictsByType(entityType),
+      getConflictsByService: (service: Conflict['service']) => syncService.getConflictsByService(service),
+      detectConflicts: async () => { return await syncService.detectConflicts(); },
+      resolveConflict: async (conflictId: string, strategy?: ConflictResolution['strategy']) => {
+        await syncService.resolveConflict(conflictId, strategy);
+      },
+      autoResolveConflicts: async () => { await syncService.autoResolveConflicts(); },
+      updateConflictResolutionConfig: (config: Partial<ConflictResolutionConfig>) => {
+        syncService.updateConflictConfig(config);
+      },
+      
+      // Import functions
+      importTasksFromGoogle: async (taskListIds?: string[]) => {
+        const accessToken = getAccessToken();
+        if (!accessToken) {
+          throw new Error('Niet verbonden met Google');
+        }
+
+        try {
+          // Haal Google Tasks op
+          const result = await importGoogleTasks(accessToken, taskListIds?.[0]);
+          if (!result.success || !result.tasks) {
+            return { imported: 0, updated: 0, conflicts: 0 };
+          }
+
+          let imported = 0;
+          let updated = 0;
+          let conflicts = 0;
+
+          // Detecteer duplicates tussen bestaande tasks en geïmporteerde tasks
+          const duplicates = detectDuplicateAppTasks(tasks, result.tasks);
+          
+          // Filter nieuwe tasks (geen duplicate)
+          const newTasks = result.tasks.filter(importedTask => 
+            !duplicates.some(d => d.imported.id === importedTask.id || d.imported.googleTaskId === importedTask.googleTaskId)
+          );
+
+          // Import nieuwe tasks
+          for (const task of newTasks) {
+            addTask(task);
+            imported++;
+          }
+
+          // Update duplicates
+          for (const duplicate of duplicates) {
+            // Merge tasks (gebruik merge strategie)
+            // Note: duplicate.imported is al een app Task (na mapping), duplicate.existing is ook een app Task
+            const merged = mergeAppTasks(duplicate.existing, duplicate.imported, 'merge');
+            updateTask(merged);
+            updated++;
+          }
+
+          return { imported, updated, conflicts };
+        } catch (error: any) {
+          console.error('Import from Google failed:', error);
+          throw error;
+        }
+      },
+      importTimeSlotsFromCalendar: async (calendarIds?: string[]) => {
+        // TODO: Implement calendar import
+        return { imported: 0, updated: 0, conflicts: 0 };
+      },
+      startAutoImport: async (intervalMinutes?: number) => {
+        await syncService.startAutoImport(intervalMinutes);
+      },
+      stopAutoImport: () => {
+        syncService.stopAutoImport();
+      }
     }}>
       {children}
     </DataContext.Provider>
