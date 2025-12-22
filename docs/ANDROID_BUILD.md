@@ -26,7 +26,7 @@ npx cap open android
 
 **Optie C: Via script**
 ```bash
-./open-android.sh
+./scripts/open-android.sh
 ```
 
 > **⚠️ Als je een error krijgt**: Android Studio is niet geïnstalleerd. Zie `INSTALL_ANDROID_STUDIO.md` voor installatie-instructies.

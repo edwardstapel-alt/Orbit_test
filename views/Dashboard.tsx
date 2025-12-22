@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View } from '../types';
 import { useData } from '../context/DataContext';
 import { TopNav } from '../components/TopNav';
+import { QuickActionsPanel } from '../components/QuickActionsPanel';
 
 interface DashboardProps {
   onNavigate: (view: View, habitId?: string, lifeAreaId?: string) => void;
@@ -99,7 +100,7 @@ const ObjectiveCard: React.FC<{
 
 export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onViewObjective, onViewLifeArea, onMenuClick, onProfileClick }) => {
   const [mode, setMode] = useState<'personal' | 'professional'>('professional');
-  const { tasks, habits, objectives, keyResults, lifeAreas, updateTask, deleteTask, deleteCompletedTasks, userProfile, showCategory } = useData();
+  const { tasks, habits, objectives, keyResults, lifeAreas, updateTask, deleteTask, deleteCompletedTasks, userProfile, showCategory, quickActions } = useData();
   const [removingTasks, setRemovingTasks] = useState<Set<string>>(new Set());
   const timeoutRefs = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const animationTimeoutRefs = useRef<Map<string, NodeJS.Timeout>>(new Map());
@@ -180,6 +181,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
         onMenuClick={onMenuClick}
         onProfileClick={onProfileClick} 
       />
+
+      {/* Quick Actions Panel */}
+      {quickActions.length > 0 && (
+        <section className="px-6 md:px-12 lg:px-16 mt-4">
+          <div className="max-w-6xl mx-auto">
+            <QuickActionsPanel
+              customActions={quickActions}
+              onActionClick={(action) => {
+                if (action.type === 'navigation' && action.targetView) {
+                  onNavigate(action.targetView);
+                } else if (action.type === 'template' && action.templateType) {
+                  onEdit(action.templateType);
+                }
+              }}
+              onNavigate={onNavigate}
+              onEdit={onEdit}
+            />
+          </div>
+        </section>
+      )}
 
       {/* Toggle - Only show if showCategory is enabled */}
       {showCategory && (

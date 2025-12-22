@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Task, Habit, Friend, Objective, KeyResult, Place, TeamMember, DataContextType, UserProfile, LifeArea, Vision, TimeSlot, DayPart, StatusUpdate, Conflict, ConflictResolution, ConflictResolutionConfig } from '../types';
+import { Task, Habit, Friend, Objective, KeyResult, Place, TeamMember, DataContextType, UserProfile, LifeArea, Vision, TimeSlot, DayPart, StatusUpdate, Conflict, ConflictResolution, ConflictResolutionConfig, Reminder, Notification, NotificationSettings, EntityType, TaskTemplate, QuickAction, View } from '../types';
 import { syncService, DataContextCallbacks } from '../utils/syncService';
 import { importGoogleTasks, detectDuplicateAppTasks, mergeAppTasks, getAccessToken } from '../utils/googleSync';
 import { recordHabitCompletion, recordHabitMiss } from '../utils/habitHistory';
@@ -7,6 +7,10 @@ import { isAuthenticated, onAuthStateChange } from '../utils/firebaseAuth';
 import { syncEntityToFirebase, syncAllFromFirebase, syncAllToFirebase, watchFirebaseChanges, deleteEntityFromFirebase, deleteAllUserDataFromFirebase } from '../utils/firebaseSync';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../utils/firebase';
+import { notificationScheduler } from '../utils/notificationScheduler';
+import { getTaskTemplates, createTaskFromTemplate as createTaskFromTemplateUtil, addCustomTaskTemplate, updateTaskTemplate as updateTaskTemplateUtil, deleteTaskTemplate as deleteTaskTemplateUtil, updateTemplateUsage as updateTaskTemplateUsage } from '../utils/taskTemplates';
+import { getQuickActions, addCustomQuickAction, updateQuickAction as updateQuickActionUtil, deleteQuickAction as deleteQuickActionUtil, updateActionUsage } from '../utils/quickActions';
+import { recurringEngine } from '../utils/recurringEngine';
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
@@ -211,6 +215,47 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>(() => loadData('orbit_timeSlots', []));
   const [dayParts, setDayParts] = useState<DayPart[]>(() => loadData('orbit_dayParts', defaultDayParts));
   const [statusUpdates, setStatusUpdates] = useState<StatusUpdate[]>(() => loadData('orbit_statusUpdates', []));
+  
+  // Notifications & Reminders
+  const defaultNotificationSettings: NotificationSettings = {
+    enabled: true,
+    browserNotifications: true,
+    soundEnabled: true,
+    reminderDefaults: {
+      task: 15,
+      habit: 5,
+      objective: 1440, // 1 day
+      timeSlot: 15
+    },
+    quietHours: {
+      enabled: false,
+      startTime: '22:00',
+      endTime: '08:00'
+    }
+  };
+  const [reminders, setReminders] = useState<Reminder[]>(() => loadData('orbit_reminders', []));
+  const [notifications, setNotifications] = useState<Notification[]>(() => loadData('orbit_notifications', []));
+  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(() => 
+    loadData('orbit_notificationSettings', defaultNotificationSettings)
+  );
+  
+  // Task Templates & Quick Actions
+  const [taskTemplates, setTaskTemplates] = useState<TaskTemplate[]>(() => loadData('orbit_taskTemplates', []));
+  const [quickActions, setQuickActions] = useState<QuickAction[]>(() => loadData('orbit_quickActions', []));
+  
+  // Track deleted Google Task IDs to prevent re-import
+  const [deletedGoogleTaskIds, setDeletedGoogleTaskIds] = useState<string[]>(() => loadData('orbit_deletedGoogleTaskIds', []));
+  // Track all deleted task IDs with timestamps to prevent Firebase sync from restoring them
+  // Migrate old format (string[]) to new format (Array<{id, deletedAt}>)
+  const [deletedTaskIds, setDeletedTaskIds] = useState<Array<{ id: string; deletedAt: string }>>(() => {
+    const loaded = loadData('orbit_deletedTaskIds', []);
+    // Migrate: if it's an array of strings, convert to new format
+    if (Array.isArray(loaded) && loaded.length > 0 && typeof loaded[0] === 'string') {
+      const now = new Date().toISOString();
+      return (loaded as string[]).map(id => ({ id, deletedAt: now }));
+    }
+    return loaded;
+  });
 
   // Helper function to reduce saturation by 30%
   const reduceSaturation = (color: string): string => {
@@ -293,6 +338,57 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   useEffect(() => { localStorage.setItem('orbit_timeSlots', JSON.stringify(timeSlots)); }, [timeSlots]);
   useEffect(() => { localStorage.setItem('orbit_dayParts', JSON.stringify(dayParts)); }, [dayParts]);
   useEffect(() => { localStorage.setItem('orbit_statusUpdates', JSON.stringify(statusUpdates)); }, [statusUpdates]);
+  useEffect(() => { localStorage.setItem('orbit_reminders', JSON.stringify(reminders)); }, [reminders]);
+  useEffect(() => { localStorage.setItem('orbit_notifications', JSON.stringify(notifications)); }, [notifications]);
+  useEffect(() => { localStorage.setItem('orbit_notificationSettings', JSON.stringify(notificationSettings)); }, [notificationSettings]);
+  useEffect(() => { localStorage.setItem('orbit_taskTemplates', JSON.stringify(taskTemplates)); }, [taskTemplates]);
+  useEffect(() => { localStorage.setItem('orbit_quickActions', JSON.stringify(quickActions)); }, [quickActions]);
+  useEffect(() => { localStorage.setItem('orbit_deletedGoogleTaskIds', JSON.stringify(deletedGoogleTaskIds)); }, [deletedGoogleTaskIds]);
+  useEffect(() => { localStorage.setItem('orbit_deletedTaskIds', JSON.stringify(deletedTaskIds)); }, [deletedTaskIds]);
+  
+  // Cleanup oude deletedTaskIds (ouder dan 14 dagen)
+  const cleanupOldDeletedTaskIds = () => {
+    const now = new Date();
+    const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+    
+    setDeletedTaskIds(prev => {
+      const filtered = prev.filter(entry => {
+        const deletedAt = new Date(entry.deletedAt);
+        return deletedAt > fourteenDaysAgo;
+      });
+      
+      if (filtered.length !== prev.length) {
+        console.log(`🧹 Cleaned up ${prev.length - filtered.length} old deleted task IDs (older than 14 days)`);
+      }
+      
+      return filtered;
+    });
+  };
+
+  // Run cleanup daily
+  useEffect(() => {
+    // Run cleanup on mount
+    cleanupOldDeletedTaskIds();
+    
+    // Run cleanup daily (every 24 hours)
+    const interval = setInterval(() => {
+      cleanupOldDeletedTaskIds();
+    }, 24 * 60 * 60 * 1000);
+    
+    return () => clearInterval(interval);
+  }, []);
+
+  // Sync deletedTaskIds to Firebase (with both formats for backward compatibility)
+  useEffect(() => {
+    if (isAuthenticated() && deletedTaskIds.length > 0) {
+      syncEntityToFirebase('deletedTaskIds', { 
+        ids: deletedTaskIds.map(e => e.id), // Old format for backward compatibility
+        entries: deletedTaskIds // New format with timestamps
+      }, 'user').catch(err => 
+        console.error('Error syncing deletedTaskIds to Firebase:', err)
+      );
+    }
+  }, [deletedTaskIds]);
   useEffect(() => { 
       localStorage.setItem('orbit_accent', JSON.stringify(accentColor)); 
       const primaryColor = darkMode ? reduceSaturation(accentColor) : accentColor;
@@ -378,17 +474,62 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             if (hasFirebaseData) {
               // Merge strategy: merge Firebase data with local data, avoiding duplicates
               // Helper function to merge arrays by ID, keeping the most recent version
-              const mergeArrays = <T extends { id: string }>(local: T[], firebase: T[]): T[] => {
+              const mergeArrays = <T extends { id: string }>(local: T[], firebase: T[], deletedIds: string[] = []): T[] => {
                 const merged = new Map<string, T>();
-                // First add all local items
-                local.forEach(item => merged.set(item.id, item));
-                // Then add/update with Firebase items (Firebase wins on conflict)
-                firebase.forEach(item => merged.set(item.id, item));
+                // First add all local items (exclude deleted)
+                local.forEach(item => {
+                  if (!deletedIds.includes(item.id)) {
+                    merged.set(item.id, item);
+                  }
+                });
+                // Then add/update with Firebase items (exclude deleted), Firebase wins on conflict
+                firebase.forEach(item => {
+                  if (!deletedIds.includes(item.id)) {
+                    merged.set(item.id, item);
+                  }
+                });
                 return Array.from(merged.values());
               };
 
+              // Sync deletedTaskIds from Firebase first
+              if (syncResult.data.deletedTaskIds) {
+                setDeletedTaskIds(prev => {
+                  // Firebase kan entries hebben (nieuwe format) of ids (oude format)
+                  const firebaseEntries = syncResult.data.deletedTaskIds.entries || [];
+                  const firebaseIds = syncResult.data.deletedTaskIds.ids || [];
+                  
+                  // Migrate oude format naar nieuwe format
+                  const migratedFirebase: Array<{ id: string; deletedAt: string }> = [];
+                  if (firebaseEntries.length > 0) {
+                    migratedFirebase.push(...firebaseEntries);
+                  } else if (firebaseIds.length > 0) {
+                    // Oude format: array van strings, converteer naar nieuwe format
+                    const now = new Date().toISOString();
+                    migratedFirebase.push(...firebaseIds.map((id: string) => ({ id, deletedAt: now })));
+                  }
+                  
+                  // Merge: combine local and Firebase deleted IDs, voorkom duplicates
+                  const mergedMap = new Map<string, { id: string; deletedAt: string }>();
+                  prev.forEach(entry => mergedMap.set(entry.id, entry));
+                  migratedFirebase.forEach(entry => {
+                    if (!mergedMap.has(entry.id)) {
+                      mergedMap.set(entry.id, entry);
+                    } else {
+                      // Keep the oldest deletedAt timestamp
+                      const existing = mergedMap.get(entry.id)!;
+                      if (new Date(entry.deletedAt) < new Date(existing.deletedAt)) {
+                        mergedMap.set(entry.id, entry);
+                      }
+                    }
+                  });
+                  
+                  return Array.from(mergedMap.values());
+                });
+              }
+
               if (syncResult.data.tasks.length > 0) {
-                setTasks(prev => mergeArrays(prev, syncResult.data.tasks));
+                const deletedIds = deletedTaskIds.map(e => e.id);
+                setTasks(prev => mergeArrays(prev, syncResult.data.tasks, deletedIds));
               }
               if (syncResult.data.habits.length > 0) {
                 setHabits(prev => mergeArrays(prev, syncResult.data.habits));
@@ -427,7 +568,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                   timeSlots,
                   friends,
                   statusUpdates,
-                  userProfile
+                  userProfile,
+                  deletedTaskIds: deletedTaskIds.map(e => e.id) // Send as array for compatibility
                 });
                 console.log('✅ Local data uploaded:', uploadResult.success ? 'Success' : 'Failed', uploadResult.errors || '');
               } catch (uploadError) {
@@ -448,20 +590,70 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         // Watch for changes in Firebase - merge with local data to avoid duplicates
         // Helper function to merge arrays by ID, keeping Firebase version if both exist
-        const mergeArrays = <T extends { id: string }>(local: T[], firebase: T[]): T[] => {
+        // Exclude deleted items
+        const mergeArrays = <T extends { id: string }>(local: T[], firebase: T[], deletedIds: string[] = []): T[] => {
           const merged = new Map<string, T>();
-          // First add all local items
-          local.forEach(item => merged.set(item.id, item));
-          // Then add/update with Firebase items (Firebase wins on conflict)
-          firebase.forEach(item => merged.set(item.id, item));
+          // First add all local items (exclude deleted)
+          local.forEach(item => {
+            if (!deletedIds.includes(item.id)) {
+              merged.set(item.id, item);
+            }
+          });
+          // Then add/update with Firebase items (exclude deleted), Firebase wins on conflict
+          firebase.forEach(item => {
+            if (!deletedIds.includes(item.id)) {
+              merged.set(item.id, item);
+            }
+          });
           return Array.from(merged.values());
         };
+
+        // Watch deletedTaskIds from Firebase
+        unsubscribers.push(watchFirebaseChanges('deletedTaskIds', (firebaseDeleted) => {
+          if (isClearingData) return;
+          if (firebaseDeleted.length > 0) {
+            const firebaseData = firebaseDeleted[0];
+            setDeletedTaskIds(prev => {
+              // Firebase kan entries hebben (nieuwe format) of ids (oude format)
+              const firebaseEntries = firebaseData?.entries || [];
+              const firebaseIds = firebaseData?.ids || [];
+              
+              // Migrate oude format naar nieuwe format
+              const migratedFirebase: Array<{ id: string; deletedAt: string }> = [];
+              if (firebaseEntries.length > 0) {
+                migratedFirebase.push(...firebaseEntries);
+              } else if (firebaseIds.length > 0) {
+                // Oude format: array van strings, converteer naar nieuwe format
+                const now = new Date().toISOString();
+                migratedFirebase.push(...firebaseIds.map((id: string) => ({ id, deletedAt: now })));
+              }
+              
+              // Merge: combine local and Firebase deleted IDs, voorkom duplicates
+              const mergedMap = new Map<string, { id: string; deletedAt: string }>();
+              prev.forEach(entry => mergedMap.set(entry.id, entry));
+              migratedFirebase.forEach(entry => {
+                if (!mergedMap.has(entry.id)) {
+                  mergedMap.set(entry.id, entry);
+                } else {
+                  // Keep the oldest deletedAt timestamp
+                  const existing = mergedMap.get(entry.id)!;
+                  if (new Date(entry.deletedAt) < new Date(existing.deletedAt)) {
+                    mergedMap.set(entry.id, entry);
+                  }
+                }
+              });
+              
+              return Array.from(mergedMap.values());
+            });
+          }
+        }));
 
         unsubscribers.push(watchFirebaseChanges('tasks', (firebaseTasks) => {
           // Don't restore data if we're in the middle of clearing
           if (isClearingData) return;
           if (firebaseTasks.length > 0) {
-            setTasks(prev => mergeArrays(prev, firebaseTasks));
+            const deletedIds = deletedTaskIds.map(e => e.id);
+            setTasks(prev => mergeArrays(prev, firebaseTasks, deletedIds));
           }
         }));
 
@@ -597,9 +789,30 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
   const deleteTask = (id: string) => {
-    setTasks(tasks.filter(t => t.id !== id));
-    // Auto-sync delete to Google Tasks
     const task = tasks.find(t => t.id === id);
+    setTasks(tasks.filter(t => t.id !== id));
+    
+    // Voeg task ID toe aan deletedTaskIds om te voorkomen dat Firebase sync deze terugzet
+    setDeletedTaskIds(prev => {
+      const now = new Date().toISOString();
+      if (!prev.find(e => e.id === id)) {
+        return [...prev, { id, deletedAt: now }];
+      }
+      return prev;
+    });
+    
+    // Als deze task een googleTaskId heeft, voeg deze toe aan deletedGoogleTaskIds
+    // om te voorkomen dat deze opnieuw wordt geïmporteerd
+    if (task?.googleTaskId) {
+      setDeletedGoogleTaskIds(prev => {
+        if (!prev.includes(task.googleTaskId!)) {
+          return [...prev, task.googleTaskId!];
+        }
+        return prev;
+      });
+    }
+    
+    // Auto-sync delete to Google Tasks
     if (task) {
       syncService.queueSync('task', 'delete', id, null);
     }
@@ -614,6 +827,28 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const deleteCompletedTasks = () => {
     const completedTasks = tasks.filter(t => t.completed);
     const completedIds = completedTasks.map(t => t.id);
+    
+    // Voeg alle verwijderde task IDs toe aan deletedTaskIds
+    setDeletedTaskIds(prev => {
+      const now = new Date().toISOString();
+      const newEntries = completedIds
+        .filter(id => !prev.find(e => e.id === id))
+        .map(id => ({ id, deletedAt: now }));
+      return newEntries.length > 0 ? [...prev, ...newEntries] : prev;
+    });
+    
+    // Verzamel Google Task IDs van verwijderde taken
+    const googleTaskIdsToBlock = completedTasks
+      .filter(t => t.googleTaskId)
+      .map(t => t.googleTaskId!);
+    
+    // Voeg Google Task IDs toe aan deletedGoogleTaskIds
+    if (googleTaskIdsToBlock.length > 0) {
+      setDeletedGoogleTaskIds(prev => {
+        const newIds = googleTaskIdsToBlock.filter(id => !prev.includes(id));
+        return newIds.length > 0 ? [...prev, ...newIds] : prev;
+      });
+    }
     
     // Delete all completed tasks
     setTasks(tasks.filter(t => !t.completed));
@@ -1151,6 +1386,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setVisions([]);
     setTimeSlots([]);
     setStatusUpdates([]);
+    setDeletedTaskIds([]);
+    setDeletedGoogleTaskIds([]);
     // Keep dayParts as they are defaults
     // Note: userProfile is NOT cleared here - it will be updated by import
     
@@ -1172,6 +1409,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       'orbit_accent',
       'orbit_darkMode',
       'orbit_showCategory',
+      'orbit_reminders',
+      'orbit_notifications',
+      'orbit_notificationSettings',
+      'orbit_taskTemplates',
+      'orbit_quickActions',
+      'orbit_deletedGoogleTaskIds',
     ];
     
     localStorageKeys.forEach(key => {
@@ -1208,12 +1451,289 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setTimeSlots([]);
     setDayParts(defaultDayParts);
     setStatusUpdates([]);
+    setReminders([]);
+    setNotifications([]);
+    setNotificationSettings(defaultNotificationSettings);
+    setDeletedGoogleTaskIds([]);
+    setDeletedTaskIds([]);
   };
+
+  // --- Reminder Functions ---
+  const addReminder = (reminder: Reminder) => {
+    setReminders([...reminders, reminder]);
+    // Sync to Firebase
+    if (isAuthenticated()) {
+      syncEntityToFirebase('reminders', reminder, reminder.id).catch(err => 
+        console.error('Error syncing reminder to Firebase:', err)
+      );
+    }
+  };
+
+  const updateReminder = (reminder: Reminder) => {
+    setReminders(reminders.map(r => r.id === reminder.id ? reminder : r));
+    // Sync to Firebase
+    if (isAuthenticated()) {
+      syncEntityToFirebase('reminders', reminder, reminder.id).catch(err => 
+        console.error('Error syncing reminder to Firebase:', err)
+      );
+    }
+  };
+
+  const deleteReminder = (id: string) => {
+    setReminders(reminders.filter(r => r.id !== id));
+    // Sync delete to Firebase
+    if (isAuthenticated()) {
+      deleteEntityFromFirebase('reminders', id).catch(err => 
+        console.error('Error deleting reminder from Firebase:', err)
+      );
+    }
+  };
+
+  const getRemindersByEntity = (entityType: EntityType, entityId: string): Reminder[] => {
+    return reminders.filter(r => r.entityType === entityType && r.entityId === entityId);
+  };
+
+  const getUpcomingReminders = (limit?: number): Reminder[] => {
+    const now = new Date();
+    const upcoming = reminders
+      .filter(r => !r.completed && new Date(r.scheduledTime) > now)
+      .sort((a, b) => new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime());
+    return limit ? upcoming.slice(0, limit) : upcoming;
+  };
+
+  // --- Notification Functions ---
+  const addNotification = (notification: Notification) => {
+    setNotifications([notification, ...notifications]);
+    // Sync to Firebase
+    if (isAuthenticated()) {
+      syncEntityToFirebase('notifications', notification, notification.id).catch(err => 
+        console.error('Error syncing notification to Firebase:', err)
+      );
+    }
+  };
+
+  const updateNotification = (notification: Notification) => {
+    setNotifications(notifications.map(n => n.id === notification.id ? notification : n));
+    // Sync to Firebase
+    if (isAuthenticated()) {
+      syncEntityToFirebase('notifications', notification, notification.id).catch(err => 
+        console.error('Error syncing notification to Firebase:', err)
+      );
+    }
+  };
+
+  const deleteNotification = (id: string) => {
+    setNotifications(notifications.filter(n => n.id !== id));
+    // Sync delete to Firebase
+    if (isAuthenticated()) {
+      deleteEntityFromFirebase('notifications', id).catch(err => 
+        console.error('Error deleting notification from Firebase:', err)
+      );
+    }
+  };
+
+  const markNotificationAsRead = (id: string) => {
+    updateNotification({ ...notifications.find(n => n.id === id)!, read: true });
+  };
+
+  const markAllNotificationsAsRead = () => {
+    setNotifications(notifications.map(n => ({ ...n, read: true })));
+    // Sync all to Firebase
+    if (isAuthenticated()) {
+      notifications.forEach(n => {
+        syncEntityToFirebase('notifications', { ...n, read: true }, n.id).catch(err => 
+          console.error('Error syncing notification to Firebase:', err)
+        );
+      });
+    }
+  };
+
+  const getUnreadNotificationsCount = (): number => {
+    return notifications.filter(n => !n.read).length;
+  };
+
+  // --- Notification Settings Functions ---
+  const updateNotificationSettings = (settings: Partial<NotificationSettings>) => {
+    setNotificationSettings({ ...notificationSettings, ...settings });
+    // Sync to Firebase
+    if (isAuthenticated()) {
+      syncEntityToFirebase('notificationSettings', { ...notificationSettings, ...settings }, 'user').catch(err => 
+        console.error('Error syncing notification settings to Firebase:', err)
+      );
+    }
+  };
+
+  // --- Task Templates Functions ---
+  const addTaskTemplate = (template: TaskTemplate) => {
+    setTaskTemplates([...taskTemplates, template]);
+    // Sync to Firebase
+    if (isAuthenticated()) {
+      syncEntityToFirebase('taskTemplates', template, template.id).catch(err => 
+        console.error('Error syncing task template to Firebase:', err)
+      );
+    }
+  };
+
+  const updateTaskTemplate = (template: TaskTemplate) => {
+    setTaskTemplates(taskTemplates.map(t => t.id === template.id ? updateTaskTemplateUtil(template) : t));
+    // Sync to Firebase
+    if (isAuthenticated()) {
+      syncEntityToFirebase('taskTemplates', template, template.id).catch(err => 
+        console.error('Error syncing task template to Firebase:', err)
+      );
+    }
+  };
+
+  const deleteTaskTemplate = (id: string) => {
+    setTaskTemplates(deleteTaskTemplateUtil(id, taskTemplates));
+    // Sync delete to Firebase
+    if (isAuthenticated()) {
+      deleteEntityFromFirebase('taskTemplates', id).catch(err => 
+        console.error('Error deleting task template from Firebase:', err)
+      );
+    }
+  };
+
+  const createTaskFromTemplate = (templateId: string): Task | null => {
+    const allTemplates = getTaskTemplates(taskTemplates);
+    const template = allTemplates.find(t => t.id === templateId);
+    if (!template) return null;
+
+    const task = createTaskFromTemplateUtil(template);
+    addTask(task);
+    
+    // Update template usage
+    setTaskTemplates(updateTaskTemplateUsage(templateId, taskTemplates));
+    
+    return task;
+  };
+
+  // --- Quick Actions Functions ---
+  const addQuickAction = (action: QuickAction) => {
+    setQuickActions([...quickActions, action]);
+    // Sync to Firebase
+    if (isAuthenticated()) {
+      syncEntityToFirebase('quickActions', action, action.id).catch(err => 
+        console.error('Error syncing quick action to Firebase:', err)
+      );
+    }
+  };
+
+  const updateQuickAction = (action: QuickAction) => {
+    setQuickActions(quickActions.map(a => a.id === action.id ? updateQuickActionUtil(action) : a));
+    // Sync to Firebase
+    if (isAuthenticated()) {
+      syncEntityToFirebase('quickActions', action, action.id).catch(err => 
+        console.error('Error syncing quick action to Firebase:', err)
+      );
+    }
+  };
+
+  const deleteQuickAction = (id: string) => {
+    setQuickActions(deleteQuickActionUtil(id, quickActions));
+    // Sync delete to Firebase
+    if (isAuthenticated()) {
+      deleteEntityFromFirebase('quickActions', id).catch(err => 
+        console.error('Error deleting quick action from Firebase:', err)
+      );
+    }
+  };
+
+  const executeQuickAction = (actionId: string) => {
+    const allActions = getQuickActions(quickActions);
+    const action = allActions.find(a => a.id === actionId);
+    if (!action) return;
+
+    // Update usage
+    setQuickActions(updateActionUsage(actionId, quickActions));
+
+    // Handle action based on type
+    // Note: Navigation actions will be handled by the component that calls this
+    // Custom actions would need a handler registry
+  };
+
+  // --- Recurring Tasks Generation ---
+  useEffect(() => {
+    // Generate recurring task instances daily
+    const generateRecurringTasks = () => {
+      const recurringTasks = tasks.filter(t => t.recurring && !t.recurring.parentTaskId);
+      for (const task of recurringTasks) {
+        const instances = recurringEngine.generateRecurringInstances(task, 30);
+        for (const instance of instances) {
+          // Check if instance already exists
+          if (!tasks.find(t => t.id === instance.id)) {
+            addTask(instance);
+          }
+        }
+        // Update lastGenerated
+        if (instances.length > 0) {
+          const lastInstance = instances[instances.length - 1];
+          if (lastInstance.scheduledDate) {
+            updateTask({
+              ...task,
+              recurring: {
+                ...task.recurring!,
+                lastGenerated: lastInstance.scheduledDate,
+              }
+            });
+          }
+        }
+      }
+    };
+
+    // Generate on mount and daily
+    generateRecurringTasks();
+    const interval = setInterval(generateRecurringTasks, 24 * 60 * 60 * 1000); // Daily
+    return () => clearInterval(interval);
+  }, [tasks]);
+
+  // --- Notification Scheduler Integration ---
+  useEffect(() => {
+    if (!notificationSettings.enabled) {
+      notificationScheduler.stop();
+      return;
+    }
+
+    // Entity getter function for notification scheduler
+    const entityGetter = (entityType: EntityType, entityId: string): Task | Habit | Objective | TimeSlot | null => {
+      switch (entityType) {
+        case 'task':
+          return tasks.find(t => t.id === entityId) || null;
+        case 'habit':
+          return habits.find(h => h.id === entityId) || null;
+        case 'objective':
+          return objectives.find(o => o.id === entityId) || null;
+        case 'timeSlot':
+          return timeSlots.find(ts => ts.id === entityId) || null;
+        default:
+          return null;
+      }
+    };
+
+    // Notification callback
+    const notificationCallback = (notification: Notification) => {
+      addNotification(notification);
+    };
+
+    // Start scheduler
+    notificationScheduler.start(reminders, entityGetter, notificationCallback);
+
+    // Update reminders when they change
+    notificationScheduler.updateReminders(reminders);
+
+    // Cleanup on unmount
+    return () => {
+      notificationScheduler.stop();
+    };
+  }, [reminders, notificationSettings.enabled, tasks, habits, objectives, timeSlots]);
 
   return (
     <DataContext.Provider value={{
       userProfile, tasks, habits, friends, objectives, keyResults, places, teamMembers, accentColor, darkMode, showCategory,
       lifeAreas, visions, timeSlots, dayParts, statusUpdates,
+      reminders, notifications, notificationSettings,
+      taskTemplates, quickActions,
+      deletedGoogleTaskIds, deletedTaskIds,
       updateUserProfile,
       addTask, updateTask, deleteTask, deleteCompletedTasks,
       addHabit, updateHabit, deleteHabit,
@@ -1234,6 +1754,13 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       getObjectivesByKeyResult, getLifeAreaByObjective,
       setAccentColor, setDarkMode, setShowCategory,
       clearAllData, restoreExampleData,
+      // Notifications & Reminders
+      addReminder, updateReminder, deleteReminder, getRemindersByEntity, getUpcomingReminders,
+      addNotification, updateNotification, deleteNotification, markNotificationAsRead, markAllNotificationsAsRead, getUnreadNotificationsCount,
+      updateNotificationSettings,
+      // Task Templates & Quick Actions
+      addTaskTemplate, updateTaskTemplate, deleteTaskTemplate, createTaskFromTemplate,
+      addQuickAction, updateQuickAction, deleteQuickAction, executeQuickAction,
       // Sync service functions
       getSyncQueueStatus: () => syncService.getQueueStatus(),
       triggerSync: async () => { await syncService.triggerSync(); },
@@ -1275,10 +1802,21 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           // Detecteer duplicates tussen bestaande tasks en geïmporteerde tasks
           const duplicates = detectDuplicateAppTasks(tasks, result.tasks);
           
-          // Filter nieuwe tasks (geen duplicate)
-          const newTasks = result.tasks.filter(importedTask => 
-            !duplicates.some(d => d.imported.id === importedTask.id || d.imported.googleTaskId === importedTask.googleTaskId)
-          );
+          // Filter nieuwe tasks (geen duplicate EN niet in deletedGoogleTaskIds)
+          const newTasks = result.tasks.filter(importedTask => {
+            // Check of deze task al bestaat (duplicate)
+            const isDuplicate = duplicates.some(d => 
+              d.imported.id === importedTask.id || 
+              d.imported.googleTaskId === importedTask.googleTaskId
+            );
+            
+            // Check of deze Google Task ID in de deleted lijst staat
+            const isDeleted = importedTask.googleTaskId && 
+              deletedGoogleTaskIds.includes(importedTask.googleTaskId);
+            
+            // Alleen toevoegen als het geen duplicate is EN niet verwijderd is
+            return !isDuplicate && !isDeleted;
+          });
 
           // Import nieuwe tasks
           for (const task of newTasks) {

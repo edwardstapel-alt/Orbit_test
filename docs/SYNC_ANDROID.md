@@ -38,7 +38,7 @@ cd android
 Ik heb een script gemaakt dat dit automatisch doet:
 
 ```bash
-./sync-android.sh
+./scripts/sync-android.sh
 ```
 
 Of handmatig:

@@ -205,6 +205,7 @@ export const syncAllToFirebase = async (
     friends: Friend[];
     statusUpdates: StatusUpdate[];
     userProfile: UserProfile;
+    deletedTaskIds?: string[];
   }
 ): Promise<{ success: boolean; synced: { [key: string]: number }; errors: { [key: string]: number } }> => {
   const results: { [key: string]: number } = {};
@@ -263,6 +264,7 @@ export const syncAllFromFirebase = async (): Promise<{
     friends: Friend[];
     statusUpdates: StatusUpdate[];
     userProfile: UserProfile | null;
+    deletedTaskIds?: { ids: string[] };
   };
   error?: string;
 }> => {
@@ -306,9 +308,30 @@ export const syncAllFromFirebase = async (): Promise<{
         console.error('❌ Error getting profile:', error);
         data.userProfile = null;
       }
+
+      // Get deletedTaskIds
+      try {
+        const deletedRef = doc(db, `users/${userId}/deletedTaskIds`, 'user');
+        const deletedSnap = await getDoc(deletedRef);
+        if (deletedSnap.exists()) {
+          const deletedData = deletedSnap.data();
+          // Support both old format (ids array) and new format (entries array)
+          data.deletedTaskIds = deletedData;
+          const count = deletedData.entries?.length || deletedData.ids?.length || 0;
+          if (count > 0) {
+            console.log(`✅ Synced ${count} deleted task IDs`);
+          }
+        } else {
+          data.deletedTaskIds = { ids: [], entries: [] };
+        }
+      } catch (error) {
+        console.error('❌ Error getting deletedTaskIds:', error);
+        data.deletedTaskIds = { ids: [], entries: [] };
+      }
     } else {
       console.warn('⚠️ Cannot get profile: User not authenticated');
       data.userProfile = null;
+      data.deletedTaskIds = { ids: [] };
     }
 
     const totalItems = Object.values(data).reduce((sum: number, arr: any) => {
@@ -319,7 +342,7 @@ export const syncAllFromFirebase = async (): Promise<{
     return { success: true, data };
   } catch (error: any) {
     console.error('❌ Error syncing all from Firebase:', error);
-    return {
+      return {
       success: false,
       data: {
         tasks: [],
@@ -331,6 +354,7 @@ export const syncAllFromFirebase = async (): Promise<{
         friends: [],
         statusUpdates: [],
         userProfile: null,
+        deletedTaskIds: { ids: [] },
       },
       error: error.message,
     };

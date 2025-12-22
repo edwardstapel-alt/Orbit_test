@@ -27,6 +27,7 @@ export enum View {
   HABIT_DETAIL = 'HABIT_DETAIL', // Habit Detail View
   HABIT_ANALYTICS = 'HABIT_ANALYTICS', // Habit Analytics Dashboard
   HABIT_TEMPLATES = 'HABIT_TEMPLATES', // Habit Template Library
+  TEMPLATE_LIBRARY = 'TEMPLATE_LIBRARY', // Template Library (Tasks & Habits)
   HABITS = 'HABITS' // Habits Overview Page
 }
 
@@ -153,6 +154,25 @@ export interface Task {
   syncMetadata?: SyncMetadata;
   googleTaskId?: string; // Google Tasks ID
   asanaTaskId?: string; // Asana Task ID
+  // Recurring fields
+  recurring?: {
+    pattern: 'daily' | 'weekly' | 'monthly' | 'yearly' | 'custom';
+    interval?: number; // Bijv. elke 2 weken
+    daysOfWeek?: number[]; // 0-6 (zondag-zaterdag) voor weekly
+    dayOfMonth?: number; // 1-31 voor monthly
+    nthWeekday?: {
+      weekday: number; // 0-6
+      n: number; // 1-5 (1e, 2e, 3e, etc.)
+    };
+    endDate?: string; // YYYY-MM-DD
+    endAfterOccurrences?: number;
+    skipWeekends?: boolean;
+    timezone?: string;
+    lastGenerated?: string; // YYYY-MM-DD van laatste gegenereerde instance
+    nextGenerationDate?: string; // YYYY-MM-DD wanneer volgende instance gegenereerd moet worden
+    parentTaskId?: string; // ID van parent recurring task
+    instanceNumber?: number; // Voor tracking welke instance dit is
+  };
 }
 
 export interface Habit {
@@ -182,6 +202,14 @@ export interface Habit {
   notes?: string; // User notes/reflections
   // Template reference (Fase 4)
   templateId?: string; // ID of template used to create this habit
+  // Recurring fields
+  recurring?: {
+    frequency: 'daily' | 'weekly' | 'monthly';
+    daysOfWeek?: number[]; // Voor weekly habits (0-6, zondag-zaterdag)
+    specificDays?: number[]; // 1-31 voor monthly
+    skipWeekends?: boolean;
+    reminderTime?: string; // HH:mm
+  };
 }
 
 // Completion record with timestamp
@@ -208,6 +236,44 @@ export interface HabitTemplate {
   createdAt: string;
   updatedAt: string;
   tags?: string[]; // For search/filtering
+}
+
+// Task Template
+export interface TaskTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  category: string; // "Work", "Personal", "Health", etc.
+  icon?: string;
+  // Template data
+  taskData: Partial<Task>; // Alle task velden behalve id, completed
+  // Metadata
+  usageCount: number;
+  lastUsed?: string; // ISO timestamp
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+  tags?: string[]; // For search/filtering
+}
+
+// Quick Action
+export interface QuickAction {
+  id: string;
+  name: string;
+  icon: string;
+  type: 'template' | 'navigation' | 'custom';
+  // Voor template type
+  templateId?: string;
+  templateType?: 'task' | 'habit';
+  // Voor navigation type
+  targetView?: View;
+  // Voor custom type
+  customHandler?: string; // Function name
+  // Metadata
+  order: number;
+  isPinned: boolean;
+  usageCount: number;
+  lastUsed?: string;
 }
 
 // Habit Analytics (Fase 3)
@@ -419,6 +485,8 @@ export interface DataContextType {
   reminders: Reminder[];
   notifications: Notification[];
   notificationSettings: NotificationSettings;
+  deletedGoogleTaskIds: string[]; // Track deleted Google Task IDs to prevent re-import
+  deletedTaskIds: Array<{ id: string; deletedAt: string }>; // Track all deleted task IDs with timestamps to prevent Firebase sync from restoring them
   
   updateUserProfile: (profile: Partial<UserProfile>) => void;
   
@@ -514,6 +582,17 @@ export interface DataContextType {
   getUnreadNotificationsCount: () => number;
   
   updateNotificationSettings: (settings: Partial<NotificationSettings>) => void;
+
+  // Task Templates & Quick Actions
+  addTaskTemplate: (template: TaskTemplate) => void;
+  updateTaskTemplate: (template: TaskTemplate) => void;
+  deleteTaskTemplate: (id: string) => void;
+  createTaskFromTemplate: (templateId: string) => Task | null;
+  
+  addQuickAction: (action: QuickAction) => void;
+  updateQuickAction: (action: QuickAction) => void;
+  deleteQuickAction: (id: string) => void;
+  executeQuickAction: (actionId: string) => void;
 
   clearAllData: () => Promise<void>;
   restoreExampleData: () => void;

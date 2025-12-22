@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
-import { EntityType, Task, Habit, Friend, Objective, KeyResult, Place, LifeArea, Vision, TimeSlot, View } from '../types';
+import { EntityType, Task, Habit, Friend, Objective, KeyResult, Place, LifeArea, Vision, TimeSlot, View, Reminder } from '../types';
 import { QuickLinkSelector } from '../components/QuickLinkSelector';
+import { ReminderEditor } from '../components/ReminderEditor';
 import { getAllTemplates, createHabitFromTemplate } from '../utils/habitTemplates';
+import { getTaskTemplates, createTaskFromTemplate as createTaskFromTemplateUtil } from '../utils/taskTemplates';
 
 interface EditorProps {
   type: EntityType;
@@ -21,6 +23,8 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
   const [showOwnerModal, setShowOwnerModal] = useState(false);
   const [showLifeAreaModal, setShowLifeAreaModal] = useState(false);
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
+  const [showReminderEditor, setShowReminderEditor] = useState(false);
+  const [showRecurringOptions, setShowRecurringOptions] = useState(false);
 
   // Helper function to determine dayPart from time
   const getDayPartFromTime = (time: string, dayParts: any[]): string => {
@@ -1897,6 +1901,58 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
       )}
 
       {/* Template Selector Modal */}
+      {/* Task Template Selector Modal */}
+      {showTemplateSelector && type === 'task' && (
+        <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-xl font-bold text-text-main">Selecteer Task Template</h3>
+              <button
+                onClick={() => setShowTemplateSelector(false)}
+                className="text-text-tertiary hover:text-text-main"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {getTaskTemplates(data.taskTemplates).map(template => (
+                  <div
+                    key={template.id}
+                    onClick={() => {
+                      const taskFromTemplate = createTaskFromTemplateUtil(template);
+                      setFormData({ ...formData, ...taskFromTemplate, id: formData.id || taskFromTemplate.id });
+                      setShowTemplateSelector(false);
+                    }}
+                    className="p-4 border border-gray-200 rounded-xl hover:border-primary hover:shadow-md transition-all cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3 mb-2">
+                      {template.icon && (
+                        <div className="size-10 rounded-lg bg-gray-100 flex items-center justify-center">
+                          <span className="material-symbols-outlined text-text-secondary">{template.icon}</span>
+                        </div>
+                      )}
+                      <div className="flex-1">
+                        <h4 className="font-bold text-text-main">{template.name}</h4>
+                        {template.description && (
+                          <p className="text-xs text-text-tertiary mt-1">{template.description}</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="text-xs px-2 py-1 bg-gray-100 rounded text-text-secondary">{template.category}</span>
+                      {template.usageCount > 0 && (
+                        <span className="text-xs text-text-tertiary">{template.usageCount}x gebruikt</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showTemplateSelector && type === 'habit' && (
         <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl shadow-xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">

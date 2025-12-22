@@ -31,6 +31,7 @@ import { HabitAnalytics } from './views/HabitAnalytics';
 import { HabitTemplates } from './views/HabitTemplates';
 import { Habits } from './views/Habits';
 import { TasksOverview } from './views/TasksOverview';
+import { TemplateLibrary } from './views/TemplateLibrary';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<View>(View.DASHBOARD);
