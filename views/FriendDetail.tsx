@@ -97,7 +97,7 @@ export const FriendDetail: React.FC<FriendDetailProps> = ({ friend, onBack }) =>
             <span className="material-symbols-outlined text-text-tertiary text-4xl mb-3 block">task_alt</span>
             <p className="text-text-secondary text-sm font-medium">No tasks linked to {friend.name}</p>
             <p className="text-text-tertiary text-xs mt-2">Link tasks to this person in the Tasks view</p>
-          </div>
+            </div>
         ) : (
           <div className="space-y-2">
             {friendTasks.map(task => (
@@ -105,7 +105,7 @@ export const FriendDetail: React.FC<FriendDetailProps> = ({ friend, onBack }) =>
                 <div className="flex items-start gap-3">
                   <div className={`size-6 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${task.completed ? 'bg-primary text-white' : 'bg-slate-100 border border-slate-200'}`}>
                     {task.completed && <span className="material-symbols-outlined text-[14px]">check</span>}
-                  </div>
+                </div>
                   <div className="flex-1 min-w-0">
                     <p className={`text-text-main text-sm font-semibold leading-tight ${task.completed ? 'line-through text-text-tertiary' : ''}`}>{task.title}</p>
                     <div className="flex items-center gap-2 mt-1.5">
@@ -118,10 +118,10 @@ export const FriendDetail: React.FC<FriendDetailProps> = ({ friend, onBack }) =>
                           {task.time}
                         </span>
                       )}
-                    </div>
-                  </div>
                 </div>
               </div>
+            </div>
+          </div>
             ))}
           </div>
         )}

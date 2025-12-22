@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { EntityType, Task, Habit, Friend, Objective, KeyResult, Place, LifeArea, Vision, TimeSlot, View } from '../types';
 import { QuickLinkSelector } from '../components/QuickLinkSelector';
+import { getAllTemplates, createHabitFromTemplate } from '../utils/habitTemplates';
 
 interface EditorProps {
   type: EntityType;
@@ -19,6 +20,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
   const [formData, setFormData] = useState<any>({});
   const [showOwnerModal, setShowOwnerModal] = useState(false);
   const [showLifeAreaModal, setShowLifeAreaModal] = useState(false);
+  const [showTemplateSelector, setShowTemplateSelector] = useState(false);
 
   // Helper function to determine dayPart from time
   const getDayPartFromTime = (time: string, dayParts: any[]): string => {
@@ -133,7 +135,12 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
             linkedKeyResultId: '',
             progressContribution: 1, // Default contribution value
             objectiveId: contextObjectiveId || '',
-            lifeAreaId: contextLifeAreaId || ''
+            lifeAreaId: contextLifeAreaId || '',
+            targetFrequency: 7,
+            category: 'Personal',
+            color: '#8B5CF6',
+            weeklyProgress: [false, false, false, false, false, false, false],
+            createdAt: new Date().toISOString()
           });
         }
         if (type === 'friend') setFormData({ name: '', role: 'Friend', roleType: 'friend', location: '' });
@@ -618,7 +625,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                             <span className="text-sm font-medium text-text-secondary">
                               {data.formatKeyResultValue(linkedKR, formData.progressContribution || 1)}
                             </span>
-                          </div>
+                    </div>
                           <p className="text-xs text-text-tertiary mt-2">
                             Each time you complete this habit, the Key Result "{linkedKR.title}" will increase by this amount.
                             {linkedKR.measurementType === 'currency' && ' Example: €10 per completion'}
@@ -629,7 +636,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                       );
                     })()}
 
-                    <div>
+                     <div>
                         <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-2">Icon Code</label>
                         <div className="flex gap-2">
                             <input type="text" className="flex-1 p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main" 
@@ -639,6 +646,94 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                             </a>
                         </div>
                     </div>
+                    {/* Template Selector (only for new habits) */}
+                    {!editId && (
+                      <div>
+                        <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-2">
+                          Start vanuit Template (optioneel)
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setShowTemplateSelector(true)}
+                          className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 hover:bg-gray-100 transition-colors text-left flex items-center justify-between"
+                        >
+                          <span className="text-text-main">Selecteer template...</span>
+                          <span className="material-symbols-outlined text-text-tertiary">arrow_forward</span>
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Extended Fields */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-2">
+                          Target Frequency (per week)
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="7"
+                          className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main"
+                          value={formData.targetFrequency || 7}
+                          onChange={(e) => handleChange('targetFrequency', parseInt(e.target.value) || 7)}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-2">
+                          Reminder Time
+                        </label>
+                        <input
+                          type="time"
+                          className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main"
+                          value={formData.reminderTime || ''}
+                          onChange={(e) => handleChange('reminderTime', e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-2">
+                          Category
+                        </label>
+                        <select
+                          className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main"
+                          value={formData.category || 'Personal'}
+                          onChange={(e) => handleChange('category', e.target.value)}
+                        >
+                          <option value="Health">Health</option>
+                          <option value="Productivity">Productivity</option>
+                          <option value="Learning">Learning</option>
+                          <option value="Personal">Personal</option>
+                          <option value="Fitness">Fitness</option>
+                          <option value="Social">Social</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-2">
+                          Color
+                        </label>
+                        <input
+                          type="color"
+                          className="w-full h-12 p-1 bg-gray-50 rounded-xl outline-none cursor-pointer"
+                          value={formData.color || '#8B5CF6'}
+                          onChange={(e) => handleChange('color', e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-2">
+                        Notes / Reflections
+                      </label>
+                      <textarea
+                        className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main min-h-[100px]"
+                        value={formData.notes || ''}
+                        onChange={(e) => handleChange('notes', e.target.value)}
+                        placeholder="Voeg notities of reflecties toe..."
+                      />
+                    </div>
+
                     <div className="grid grid-cols-2 gap-4">
                          <div>
                             <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-2">Current Streak</label>
@@ -772,13 +867,13 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                         {/* Custom Color */}
                         <div className="space-y-2">
                             <span className="text-xs font-medium text-text-secondary">Custom Color</span>
-                            <div className="flex items-center gap-3">
-                                <input 
-                                    type="color" 
+                        <div className="flex items-center gap-3">
+                            <input 
+                                type="color" 
                                     className="size-12 rounded-xl cursor-pointer border-2 border-gray-200" 
-                                    value={formData.timelineColor || (data.lifeAreas.find(la => la.id === formData.lifeAreaId)?.color || '#D95829')} 
-                                    onChange={(e) => handleChange('timelineColor', e.target.value)} 
-                                />
+                                value={formData.timelineColor || (data.lifeAreas.find(la => la.id === formData.lifeAreaId)?.color || '#D95829')} 
+                                onChange={(e) => handleChange('timelineColor', e.target.value)} 
+                            />
                                 <input
                                     type="text"
                                     className="flex-1 p-2 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-primary text-sm font-mono"
@@ -792,7 +887,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                                     placeholder="#D95829"
                                 />
                             </div>
-                            <p className="text-xs text-text-tertiary">Defaults to Life Area color</p>
+                                <p className="text-xs text-text-tertiary">Defaults to Life Area color</p>
                         </div>
                     </div>
                 )}
@@ -829,7 +924,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                                                 type="button"
                                                 onClick={() => handleChange('lifeAreaId', '')}
                                                 className="text-text-tertiary hover:text-text-main"
-                                            >
+                        >
                                                 <span className="material-symbols-outlined text-sm">close</span>
                                             </button>
                                         </>
@@ -1295,12 +1390,12 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                             <span className="text-xs font-medium text-text-secondary">Custom Color</span>
                         </div>
                         <div className="flex items-center gap-3">
-                            <input 
-                                type="color" 
+                        <input 
+                            type="color" 
                                 className="size-12 rounded-xl cursor-pointer border-2 border-gray-200" 
-                                value={formData.color || '#D95829'} 
-                                onChange={(e) => handleChange('color', e.target.value)} 
-                            />
+                            value={formData.color || '#D95829'} 
+                            onChange={(e) => handleChange('color', e.target.value)} 
+                        />
                             <input
                                 type="text"
                                 className="flex-1 p-2 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-primary text-sm font-mono"
@@ -1797,6 +1892,62 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
             >
               Cancel
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Template Selector Modal */}
+      {showTemplateSelector && type === 'habit' && (
+        <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-xl font-bold text-text-main">Selecteer Template</h3>
+              <button
+                onClick={() => setShowTemplateSelector(false)}
+                className="text-text-tertiary hover:text-text-main"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {getAllTemplates().map(template => (
+                  <div
+                    key={template.id}
+                    onClick={() => {
+                      const habitFromTemplate = createHabitFromTemplate(template, {
+                        objectiveId: contextObjectiveId || formData.objectiveId || '',
+                        lifeAreaId: contextLifeAreaId || formData.lifeAreaId || '',
+                      });
+                      setFormData(habitFromTemplate);
+                      setShowTemplateSelector(false);
+                    }}
+                    className="p-4 border border-gray-200 rounded-xl hover:border-primary hover:shadow-md transition-all cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3 mb-2">
+                      <div
+                        className="size-10 rounded-lg flex items-center justify-center"
+                        style={{ backgroundColor: template.color ? `${template.color}20` : '#f3f4f6' }}
+                      >
+                        <span
+                          className="material-symbols-outlined"
+                          style={{ color: template.color || '#6b7280' }}
+                        >
+                          {template.icon}
+                        </span>
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-bold text-text-main">{template.name}</h4>
+                        <p className="text-xs text-text-tertiary">{template.category}</p>
+                      </div>
+                    </div>
+                    {template.description && (
+                      <p className="text-sm text-text-tertiary mt-2">{template.description}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       )}

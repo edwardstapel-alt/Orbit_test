@@ -42,7 +42,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentView, onNavigate })
         >
           <span className={`material-symbols-outlined text-[26px] ${isFilled(View.DASHBOARD)}`}>dashboard</span>
         </button>
-
+        
         <button 
           onClick={() => onNavigate(View.LIFE_AREAS)}
           className={`flex flex-col items-center justify-center size-14 rounded-full transition-colors ${getIconClass(View.LIFE_AREAS)}`}

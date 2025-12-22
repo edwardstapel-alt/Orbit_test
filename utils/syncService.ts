@@ -7,9 +7,16 @@ import {
   exportTaskToGoogleTasks,
   exportTimeSlotToCalendar,
   exportTaskToCalendar,
-  exportGoalDeadlineToCalendar
+  exportGoalDeadlineToCalendar,
+  importGoogleTasks,
+  detectDuplicateTasks,
+  mergeTasks,
+  getGoogleTaskLists,
+  mapGoogleTaskToAppTask
 } from './googleSync';
-import { Task, TimeSlot, Objective } from '../types';
+import { Task, TimeSlot, Objective, Conflict, ConflictResolution, ConflictResolutionConfig } from '../types';
+import { ConflictDetectionEngine } from './conflictDetection';
+import { ConflictResolutionEngine } from './conflictResolution';
 
 export interface SyncQueueItem {
   id: string;
@@ -42,16 +49,45 @@ const DEFAULT_SYNC_CONFIG: SyncConfig = {
   maxRetries: 3,
 };
 
+// Callbacks voor DataContext integratie
+export interface DataContextCallbacks {
+  getTasks: () => Task[];
+  getTimeSlots: () => TimeSlot[];
+  getObjectives: () => Objective[];
+  addTask: (task: Task) => void;
+  updateTask: (task: Task) => void;
+  addTimeSlot: (timeSlot: TimeSlot) => void;
+  updateTimeSlot: (timeSlot: TimeSlot) => void;
+  updateObjective: (objective: Objective) => void;
+}
+
 class SyncService {
   private queue: SyncQueueItem[] = [];
   private isProcessing = false;
   private backgroundSyncInterval: NodeJS.Timeout | null = null;
+  private autoImportInterval: NodeJS.Timeout | null = null;
   private config: SyncConfig = DEFAULT_SYNC_CONFIG;
   private listeners: Set<(item: SyncQueueItem) => void> = new Set();
+  private conflictDetection: ConflictDetectionEngine;
+  private conflictResolution: ConflictResolutionEngine;
+  private conflicts: Conflict[] = [];
+  private dataContextCallbacks: DataContextCallbacks | null = null;
 
   constructor() {
     this.loadConfig();
     this.startBackgroundSync();
+    
+    // Initialize conflict engines
+    this.conflictDetection = new ConflictDetectionEngine();
+    const conflictConfig: ConflictResolutionConfig = this.loadConflictConfig();
+    this.conflictResolution = new ConflictResolutionEngine(conflictConfig);
+  }
+
+  /**
+   * Registreer DataContext callbacks
+   */
+  registerDataContextCallbacks(callbacks: DataContextCallbacks) {
+    this.dataContextCallbacks = callbacks;
   }
 
   // Load config from localStorage
@@ -324,6 +360,338 @@ class SyncService {
       throw new Error('Google not connected');
     }
     await this.processQueue();
+  }
+
+  // Conflict Management
+
+  /**
+   * Load conflict resolution config
+   */
+  private loadConflictConfig(): ConflictResolutionConfig {
+    const saved = localStorage.getItem('orbit_conflict_config');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error('Failed to load conflict config:', e);
+      }
+    }
+    return {
+      defaultStrategy: 'last_write_wins',
+      autoResolve: false,
+      notifyOnConflict: true,
+    };
+  }
+
+  /**
+   * Save conflict resolution config
+   */
+  private saveConflictConfig(config: ConflictResolutionConfig) {
+    localStorage.setItem('orbit_conflict_config', JSON.stringify(config));
+  }
+
+  /**
+   * Detecteer conflicten voor alle gesynced items
+   */
+  async detectConflicts(): Promise<Conflict[]> {
+    if (!isGoogleConnected() || !this.dataContextCallbacks) {
+      return [];
+    }
+
+    const accessToken = getAccessToken();
+    if (!accessToken) {
+      return [];
+    }
+
+    const detectedConflicts: Conflict[] = [];
+
+    try {
+      // Haal alle gesynced tasks op
+      const tasks = this.dataContextCallbacks.getTasks();
+      const syncedTasks = tasks.filter(t => 
+        t.syncMetadata?.externalService === 'google_tasks' && 
+        t.syncMetadata?.externalId
+      );
+
+      if (syncedTasks.length > 0) {
+        // Haal Google Tasks op
+        const googleTasksResult = await importGoogleTasks(accessToken);
+        if (googleTasksResult.success && googleTasksResult.tasks) {
+          // Maak maps voor efficiente lookup
+          const externalDataMap = new Map<string, any>();
+          const syncMetadataMap = new Map<string, any>();
+
+          // Map Google Tasks op external ID
+          for (const googleTask of googleTasksResult.tasks) {
+            const appTask = syncedTasks.find(t => t.googleTaskId === googleTask.id);
+            if (appTask && appTask.syncMetadata?.externalId) {
+              externalDataMap.set(appTask.syncMetadata.externalId, googleTask);
+              syncMetadataMap.set(appTask.id, appTask.syncMetadata);
+            }
+          }
+
+          // Detecteer conflicten voor tasks
+          const taskConflicts = this.conflictDetection.detectConflicts(
+            syncedTasks,
+            externalDataMap,
+            syncMetadataMap
+          );
+          detectedConflicts.push(...taskConflicts);
+        }
+      }
+
+      // Haal alle gesynced timeSlots op
+      const timeSlots = this.dataContextCallbacks.getTimeSlots();
+      const syncedTimeSlots = timeSlots.filter(ts => 
+        ts.syncMetadata?.externalService === 'google_calendar' && 
+        ts.syncMetadata?.externalId
+      );
+
+      // TODO: Implementeer conflict detection voor timeSlots (Google Calendar)
+      // Dit vereist Google Calendar API calls
+
+      // Update conflicts array
+      this.conflicts = detectedConflicts;
+
+      return detectedConflicts;
+    } catch (error) {
+      console.error('Error detecting conflicts:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Los conflict op
+   */
+  async resolveConflict(
+    conflictId: string,
+    strategy?: ConflictResolution['strategy']
+  ): Promise<void> {
+    const conflict = this.conflicts.find(c => c.id === conflictId);
+    if (!conflict) {
+      throw new Error(`Conflict not found: ${conflictId}`);
+    }
+
+    if (!this.dataContextCallbacks) {
+      throw new Error('DataContext callbacks not registered');
+    }
+
+    const resolution = await this.conflictResolution.resolveConflict(conflict, strategy);
+    
+    // Pas resolutie toe op entiteit via DataContext
+    if (resolution.finalValue) {
+      if (conflict.entityType === 'task') {
+        const resolvedTask = resolution.finalValue as Task;
+        // Update sync metadata met nieuwe sync info
+        resolvedTask.syncMetadata = {
+          ...resolvedTask.syncMetadata,
+          syncStatus: 'synced',
+          lastSyncedAt: new Date().toISOString(),
+          conflictDetails: undefined, // Clear conflict details
+        };
+        this.dataContextCallbacks.updateTask(resolvedTask);
+      } else if (conflict.entityType === 'timeSlot') {
+        const resolvedTimeSlot = resolution.finalValue as TimeSlot;
+        resolvedTimeSlot.syncMetadata = {
+          ...resolvedTimeSlot.syncMetadata,
+          syncStatus: 'synced',
+          lastSyncedAt: new Date().toISOString(),
+          conflictDetails: undefined,
+        };
+        this.dataContextCallbacks.updateTimeSlot(resolvedTimeSlot);
+      } else if (conflict.entityType === 'objective') {
+        const resolvedObjective = resolution.finalValue as Objective;
+        // Objectives hebben geen syncMetadata in de huidige implementatie
+        this.dataContextCallbacks.updateObjective(resolvedObjective);
+      }
+    }
+
+    // Update conflict
+    conflict.resolvedAt = resolution.resolvedAt;
+    conflict.resolution = resolution;
+    this.conflicts = this.conflicts.filter(c => c.id !== conflictId);
+  }
+
+  /**
+   * Auto-resolve conflicten volgens configuratie
+   */
+  async autoResolveConflicts(): Promise<void> {
+    const config = this.conflictResolution.getConfig();
+    if (!config.autoResolve) {
+      return;
+    }
+
+    const unresolvedConflicts = this.conflicts.filter(c => !c.resolvedAt);
+    
+    for (const conflict of unresolvedConflicts) {
+      try {
+        await this.resolveConflict(conflict.id);
+      } catch (error) {
+        console.error(`Failed to auto-resolve conflict ${conflict.id}:`, error);
+      }
+    }
+  }
+
+  /**
+   * Get alle conflicten
+   */
+  getConflicts(): Conflict[] {
+    return [...this.conflicts];
+  }
+
+  /**
+   * Get conflicten per entity type
+   */
+  getConflictsByType(entityType: Conflict['entityType']): Conflict[] {
+    return this.conflicts.filter(c => c.entityType === entityType);
+  }
+
+  /**
+   * Get conflicten per service
+   */
+  getConflictsByService(service: Conflict['service']): Conflict[] {
+    return this.conflicts.filter(c => c.service === service);
+  }
+
+  /**
+   * Update conflict resolution config
+   */
+  updateConflictConfig(config: Partial<ConflictResolutionConfig>) {
+    const currentConfig = this.conflictResolution.getConfig();
+    const newConfig = { ...currentConfig, ...config };
+    this.conflictResolution.updateConfig(newConfig);
+    this.saveConflictConfig(newConfig);
+  }
+
+  // Import Management
+
+  /**
+   * Start auto-import van Google Tasks
+   */
+  async startAutoImport(intervalMinutes: number = 30): Promise<void> {
+    if (this.autoImportInterval) {
+      this.stopAutoImport();
+    }
+
+    this.autoImportInterval = setInterval(async () => {
+      try {
+        await this.importFromGoogle();
+      } catch (error) {
+        console.error('Auto-import failed:', error);
+      }
+    }, intervalMinutes * 60 * 1000);
+
+    // Direct eerste import
+    await this.importFromGoogle();
+  }
+
+  /**
+   * Stop auto-import
+   */
+  stopAutoImport(): void {
+    if (this.autoImportInterval) {
+      clearInterval(this.autoImportInterval);
+      this.autoImportInterval = null;
+    }
+  }
+
+  /**
+   * Import van Google Tasks
+   */
+  async importFromGoogle(): Promise<{ imported: number; updated: number; conflicts: number }> {
+    if (!isGoogleConnected() || !this.dataContextCallbacks) {
+      return { imported: 0, updated: 0, conflicts: 0 };
+    }
+
+    const config = this.getConfig();
+    if (!config.syncTasks) {
+      return { imported: 0, updated: 0, conflicts: 0 };
+    }
+
+    try {
+      const accessToken = getAccessToken();
+      if (!accessToken) {
+        throw new Error('No access token available');
+      }
+
+      // Haal Google Tasks op
+      const result = await importGoogleTasks(accessToken);
+      if (!result.success || !result.tasks) {
+        return { imported: 0, updated: 0, conflicts: 0 };
+      }
+
+      // Haal huidige app tasks op
+      const existingTasks = this.dataContextCallbacks.getTasks();
+      
+      // Detecteer duplicates
+      const duplicates = detectDuplicateTasks(
+        existingTasks,
+        result.tasks.map(gt => {
+          // Map Google Task naar app Task formaat voor duplicate detection
+          const appTask = {
+            id: `gt-${gt.id}`,
+            googleTaskId: gt.id,
+            title: gt.title || '',
+            scheduledDate: gt.due ? new Date(gt.due).toISOString().split('T')[0] : undefined,
+          };
+          return appTask;
+        })
+      );
+
+      // Filter nieuwe tasks (geen duplicate)
+      const newTasks = result.tasks.filter(googleTask => 
+        !duplicates.some(d => d.googleTask.id === googleTask.id)
+      );
+
+      let imported = 0;
+      let updated = 0;
+      let conflicts = 0;
+
+      // Import nieuwe tasks
+      for (const googleTask of newTasks) {
+        const appTask = mapGoogleTaskToAppTask(googleTask, '@default');
+        this.dataContextCallbacks.addTask(appTask);
+        imported++;
+      }
+
+      // Update duplicates en check voor conflicten
+      for (const duplicate of duplicates) {
+        const existingTask = existingTasks.find(t => 
+          t.googleTaskId === duplicate.googleTask.id || 
+          (t.title === duplicate.googleTask.title && 
+           t.scheduledDate === (duplicate.googleTask.due ? new Date(duplicate.googleTask.due).toISOString().split('T')[0] : undefined))
+        );
+
+        if (existingTask) {
+          // Check voor conflicten
+          const syncMetadata = existingTask.syncMetadata;
+          if (syncMetadata && syncMetadata.externalId) {
+            const conflict = this.conflictDetection.detectConflict(
+              existingTask,
+              duplicate.googleTask,
+              syncMetadata
+            );
+
+            if (conflict) {
+              conflicts++;
+              // Voeg conflict toe aan conflicts array
+              this.conflicts.push(conflict);
+              continue; // Skip update, laat user conflict oplossen
+            }
+          }
+
+          // Merge tasks (geen conflict)
+          const merged = mergeTasks(existingTask, duplicate.googleTask, 'merge');
+          this.dataContextCallbacks.updateTask(merged);
+          updated++;
+        }
+      }
+
+      return { imported, updated, conflicts };
+    } catch (error: any) {
+      console.error('Import from Google failed:', error);
+      throw error;
+    }
   }
 }
 

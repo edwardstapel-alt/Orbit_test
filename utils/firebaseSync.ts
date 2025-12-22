@@ -49,24 +49,16 @@ export const syncEntityToFirebase = async (
     }
 
     const docRef = doc(db, getUserCollection(collectionName), entityId);
-    
-    // Add timestamps - use current time if not provided
-    const now = new Date().toISOString();
-    const entityWithTimestamps = {
+    await setDoc(docRef, {
       ...entity,
       updatedAt: serverTimestamp(),
       syncedAt: serverTimestamp(),
-      lastModified: now, // Client-side timestamp for comparison
       userId // Store userId for security
-    };
-    
-    await setDoc(docRef, entityWithTimestamps, { merge: true });
-    
-    console.log(`✅ Synced ${collectionName}/${entityId} to Firebase`);
+    }, { merge: true });
 
     return { success: true };
   } catch (error: any) {
-    console.error(`❌ Error syncing ${collectionName} to Firebase:`, error);
+    console.error(`Error syncing ${collectionName} to Firebase:`, error);
     return { success: false, error: error.message };
   }
 };

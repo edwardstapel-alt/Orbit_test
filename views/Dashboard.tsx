@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View } from '../types';
 import { useData } from '../context/DataContext';
 import { TopNav } from '../components/TopNav';
 
 interface DashboardProps {
-  onNavigate: (view: View) => void;
+  onNavigate: (view: View, habitId?: string, lifeAreaId?: string) => void;
   onEdit: (type: any, id?: string, parentId?: string) => void;
   onViewObjective: (id: string) => void;
+  onViewLifeArea?: (id: string) => void;
   onMenuClick: () => void;
   onProfileClick: () => void;
 }
@@ -96,9 +97,12 @@ const ObjectiveCard: React.FC<{
   );
 };
 
-export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onViewObjective, onMenuClick, onProfileClick }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onViewObjective, onViewLifeArea, onMenuClick, onProfileClick }) => {
   const [mode, setMode] = useState<'personal' | 'professional'>('professional');
-  const { tasks, habits, objectives, keyResults, updateTask, userProfile, showCategory } = useData();
+  const { tasks, habits, objectives, keyResults, lifeAreas, updateTask, deleteTask, deleteCompletedTasks, userProfile, showCategory } = useData();
+  const [removingTasks, setRemovingTasks] = useState<Set<string>>(new Set());
+  const timeoutRefs = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const animationTimeoutRefs = useRef<Map<string, NodeJS.Timeout>>(new Map());
 
   // Filter Data based on mode (only if showCategory is enabled)
   const filteredTasks = showCategory ? tasks.filter(t => {
@@ -110,8 +114,63 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
 
   const toggleTask = (id: string) => {
     const task = tasks.find(t => t.id === id);
-    if(task) updateTask({ ...task, completed: !task.completed });
+    if (!task) return;
+
+    const newCompleted = !task.completed;
+    updateTask({ ...task, completed: newCompleted });
+
+    // Als task wordt afgevinkt, start auto-delete na 2 seconden
+    if (newCompleted) {
+      // Wacht 1.5 seconden voordat animatie start, dan 0.5s animatie, dan verwijderen
+      const animationTimeout = setTimeout(() => {
+        // Start animatie
+        setRemovingTasks(prev => new Set(prev).add(id));
+      }, 1500);
+
+      // Start timeout voor verwijdering (na 2 seconden totaal)
+      const deleteTimeout = setTimeout(() => {
+        deleteTask(id);
+        setRemovingTasks(prev => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+        timeoutRefs.current.delete(id);
+        animationTimeoutRefs.current.delete(id);
+      }, 2000);
+
+      // Sla beide timeouts op zodat we ze kunnen annuleren
+      timeoutRefs.current.set(id, deleteTimeout);
+      animationTimeoutRefs.current.set(id, animationTimeout);
+    } else {
+      // Als task wordt uitgevinkt, annuleer verwijdering
+      const timeout = timeoutRefs.current.get(id);
+      const animTimeout = animationTimeoutRefs.current.get(id);
+      if (timeout) {
+        clearTimeout(timeout);
+        timeoutRefs.current.delete(id);
+      }
+      if (animTimeout) {
+        clearTimeout(animTimeout);
+        animationTimeoutRefs.current.delete(id);
+      }
+      setRemovingTasks(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
   };
+
+  // Cleanup timeouts bij unmount
+  useEffect(() => {
+    return () => {
+      timeoutRefs.current.forEach(timeout => clearTimeout(timeout));
+      timeoutRefs.current.clear();
+      animationTimeoutRefs.current.forEach(timeout => clearTimeout(timeout));
+      animationTimeoutRefs.current.clear();
+    };
+  }, []);
 
   return (
     <div className="flex flex-col w-full h-full overflow-y-auto no-scrollbar pb-32">
@@ -126,20 +185,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
       {showCategory && (
         <section className="px-6 md:px-12 lg:px-16 mt-4">
           <div className="flex h-12 w-full max-w-2xl mx-auto items-center justify-center rounded-2xl bg-[#E6E6E6] p-1.5 shadow-inner">
-            <button 
-              onClick={() => setMode('personal')}
-              className={`flex-1 h-full text-sm font-semibold rounded-xl transition-all ${mode === 'personal' ? 'bg-white text-primary shadow-sm' : 'bg-transparent text-text-secondary hover:text-text-main'}`}
-            >
-              Personal
-            </button>
-            <button 
-              onClick={() => setMode('professional')}
-              className={`flex-1 h-full text-sm font-semibold rounded-xl transition-all ${mode === 'professional' ? 'bg-white text-primary shadow-sm' : 'bg-transparent text-text-secondary hover:text-text-main'}`}
-            >
-              Professional
-            </button>
-          </div>
-        </section>
+          <button 
+            onClick={() => setMode('personal')}
+            className={`flex-1 h-full text-sm font-semibold rounded-xl transition-all ${mode === 'personal' ? 'bg-white text-primary shadow-sm' : 'bg-transparent text-text-secondary hover:text-text-main'}`}
+          >
+            Personal
+          </button>
+          <button 
+            onClick={() => setMode('professional')}
+            className={`flex-1 h-full text-sm font-semibold rounded-xl transition-all ${mode === 'professional' ? 'bg-white text-primary shadow-sm' : 'bg-transparent text-text-secondary hover:text-text-main'}`}
+          >
+            Professional
+          </button>
+        </div>
+      </section>
       )}
 
       {/* OKRs (Objectives) */}
@@ -176,15 +235,47 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
       <section className="px-6 md:px-12 lg:px-16 mt-4">
         <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-4 px-1">
-          <h3 className="text-text-main text-lg font-bold tracking-tight">Daily Focus</h3>
+          <div className="flex items-center gap-3">
+            <h3 className="text-text-main text-lg font-bold tracking-tight">Daily Focus</h3>
+            <button
+              onClick={() => onNavigate(View.TASKS_OVERVIEW)}
+              className="text-primary text-sm font-medium hover:opacity-80 transition-opacity flex items-center gap-1"
+            >
+              See All Tasks
+              <span className="material-symbols-outlined text-sm">chevron_right</span>
+            </button>
+          </div>
+          {tasks.filter(t => t.completed).length > 0 && (
+            <button
+              onClick={() => {
+                const completedCount = tasks.filter(t => t.completed).length;
+                if (window.confirm(`Delete ${completedCount} completed task${completedCount > 1 ? 's' : ''}?`)) {
+                  deleteCompletedTasks();
+                }
+              }}
+              className="px-3 py-1.5 bg-red-500 text-white rounded-lg shadow-sm hover:bg-red-600 transition-colors text-xs font-semibold flex items-center gap-1.5"
+            >
+              <span className="material-symbols-outlined text-sm">delete_sweep</span>
+              Clear Completed
+            </button>
+          )}
         </div>
         <div className="bg-white rounded-3xl shadow-soft overflow-hidden min-h-[100px]">
           {filteredTasks.length === 0 ? (
               <div className="p-8 text-center text-text-tertiary text-sm">No tasks for this category.</div>
           ) : (
             <div className="flex flex-col">
-                {filteredTasks.map((item) => (
-                <div key={item.id} className="group flex items-center gap-4 p-5 border-b border-gray-100 last:border-0 hover:bg-gray-50/50 transition-colors cursor-pointer select-none">
+                {filteredTasks.map((item) => {
+                  const isRemoving = removingTasks.has(item.id);
+                  return (
+                <div 
+                  key={item.id} 
+                  className={`group flex items-center gap-4 p-5 border-b border-gray-100 last:border-0 hover:bg-gray-50/50 cursor-pointer select-none ${
+                    isRemoving 
+                      ? 'animate-slide-out-left pointer-events-none overflow-hidden' 
+                      : ''
+                  }`}
+                >
                     <div className="relative flex items-center shrink-0" onClick={() => toggleTask(item.id)}>
                     <input 
                         type="checkbox" 
@@ -202,7 +293,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
                     </div>
                     </div>
                 </div>
-                ))}
+                );
+                })}
             </div>
           )}
           
@@ -226,7 +318,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
 
       {/* Habit Streaks */}
       <section className="w-full mt-8">
-        <h3 className="text-text-main text-lg font-bold tracking-tight px-6 md:px-12 lg:px-16 mb-4">Habit Streaks</h3>
+        <div className="flex items-center justify-between px-6 md:px-12 lg:px-16 mb-4">
+          <h3 className="text-text-main text-lg font-bold tracking-tight">Habit Streaks</h3>
+          <button
+            onClick={() => onNavigate(View.HABITS)}
+            className="text-primary text-sm font-medium hover:opacity-80 transition-opacity flex items-center gap-1"
+          >
+            See All Habits
+            <span className="material-symbols-outlined text-sm">chevron_right</span>
+          </button>
+        </div>
         <div className="flex overflow-x-auto no-scrollbar px-6 md:px-12 lg:px-16 pb-6 gap-4 snap-x">
             <button 
               onClick={() => onEdit('habit')} 
@@ -238,7 +339,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
           {habits.map((habit) => (
             <div 
                 key={habit.id} 
-                onClick={() => onEdit('habit', habit.id)}
+                onClick={() => onNavigate(View.HABIT_DETAIL, habit.id)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  onEdit('habit', habit.id);
+                }}
                 className="snap-start flex flex-col items-start gap-3 p-4 rounded-3xl bg-white shadow-soft shrink-0 min-w-[140px] aspect-square justify-between group hover:shadow-md transition-all border border-transparent hover:border-gray-100 cursor-pointer"
             >
                 <div className="size-12 rounded-2xl bg-gray-100 flex items-center justify-center text-text-secondary group-hover:scale-110 group-hover:bg-primary-light group-hover:text-primary transition-all duration-300">
@@ -253,6 +358,64 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
                 </div>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* Life Areas */}
+      <section className="w-full mt-8 px-6 md:px-12 lg:px-16">
+        <div className="max-w-6xl mx-auto">
+          <div className="flex items-baseline justify-between mb-4">
+            <h3 className="text-text-main text-lg font-bold tracking-tight">Life Areas</h3>
+            <button 
+              className="text-primary text-sm font-medium hover:opacity-80 transition-opacity flex items-center gap-1"
+              onClick={() => onNavigate(View.LIFE_AREAS)}
+            >
+              See All
+              <span className="material-symbols-outlined text-sm">chevron_right</span>
+            </button>
+          </div>
+          {lifeAreas.length === 0 ? (
+            <div className="p-8 border-2 border-dashed border-slate-200 rounded-2xl text-center">
+              <p className="text-text-tertiary text-sm mb-2">No life areas defined.</p>
+              <button onClick={() => onEdit('lifeArea')} className="text-primary font-bold text-sm">Create One</button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {lifeAreas.slice(0, 4).map((lifeArea) => {
+                const areaObjectives = objectives.filter(obj => obj.lifeAreaId === lifeArea.id);
+                return (
+                  <div
+                    key={lifeArea.id}
+                    onClick={() => {
+                      if (onViewLifeArea) {
+                        onViewLifeArea(lifeArea.id);
+                      } else {
+                        onNavigate(View.LIFE_AREAS, undefined, lifeArea.id);
+                      }
+                    }}
+                    className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 cursor-pointer hover:shadow-md transition-all group"
+                  >
+                    {lifeArea.image ? (
+                      <div 
+                        className="w-full aspect-video rounded-xl mb-3 bg-cover bg-center"
+                        style={{ backgroundImage: `url("${lifeArea.image}")` }}
+                      />
+                    ) : (
+                      <div className="w-full aspect-video rounded-xl mb-3 bg-gray-100 flex items-center justify-center">
+                        <span className="material-symbols-outlined text-3xl text-text-tertiary">{lifeArea.icon || 'category'}</span>
+                      </div>
+                    )}
+                    <h4 className="text-sm font-bold text-text-main group-hover:text-primary transition-colors truncate">
+                      {lifeArea.name}
+                    </h4>
+                    <p className="text-xs text-text-tertiary mt-1">
+                      {areaObjectives.length} objective{areaObjectives.length !== 1 ? 's' : ''}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </section>
     </div>

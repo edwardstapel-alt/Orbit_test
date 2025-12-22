@@ -25,12 +25,12 @@ export const TopNav: React.FC<TopNavProps> = ({ title, subtitle, onProfileClick,
           <span className="material-symbols-outlined text-[24px]">arrow_back</span>
         </button>
       ) : (
-        <button 
-          className="flex items-center justify-center p-2 -ml-2 text-text-main rounded-full hover:bg-black/5 transition-colors"
-          onClick={onMenuClick}
-        >
-          <span className="material-symbols-outlined text-[24px]">menu</span>
-        </button>
+      <button 
+        className="flex items-center justify-center p-2 -ml-2 text-text-main rounded-full hover:bg-black/5 transition-colors"
+        onClick={onMenuClick}
+      >
+        <span className="material-symbols-outlined text-[24px]">menu</span>
+      </button>
       )}
 
       <div className="flex flex-col items-center">
@@ -47,24 +47,24 @@ export const TopNav: React.FC<TopNavProps> = ({ title, subtitle, onProfileClick,
             <span className="material-symbols-outlined text-[24px]">search</span>
           </button>
         )}
-        <button 
-          onClick={onProfileClick} 
-          className="relative group cursor-pointer transition-transform active:scale-95"
-        >
-           <div 
-             className="bg-center bg-no-repeat bg-cover rounded-full size-10 ring-2 ring-white shadow-sm" 
-             style={{
-               backgroundImage: userProfile.image ? `url("${userProfile.image}")` : 'none',
-               backgroundColor: userProfile.image ? 'transparent' : '#E5E7EB'
-             }}
-           >
-             {!userProfile.image && (
-               <div className="w-full h-full flex items-center justify-center text-text-tertiary">
-                 <span className="material-symbols-outlined text-2xl">account_circle</span>
-               </div>
-             )}
-           </div>
-        </button>
+      <button 
+        onClick={onProfileClick} 
+        className="relative group cursor-pointer transition-transform active:scale-95"
+      >
+         <div 
+           className="bg-center bg-no-repeat bg-cover rounded-full size-10 ring-2 ring-white shadow-sm" 
+           style={{
+             backgroundImage: userProfile.image ? `url("${userProfile.image}")` : 'none',
+             backgroundColor: userProfile.image ? 'transparent' : '#E5E7EB'
+           }}
+         >
+           {!userProfile.image && (
+             <div className="w-full h-full flex items-center justify-center text-text-tertiary">
+               <span className="material-symbols-outlined text-2xl">account_circle</span>
+             </div>
+           )}
+         </div>
+      </button>
       </div>
     </header>
   );

@@ -282,9 +282,9 @@ export const ObjectiveDetail: React.FC<ObjectiveDetailProps> = ({ objectiveId, o
                         </div>
                         <div className="flex items-end justify-between mb-2">
                             <div className="flex-1">
-                                <span className="text-xs text-text-secondary font-medium">
-                                    {formatKeyResultValue(kr, kr.current)} / <span className="text-text-tertiary">{formatKeyResultValue(kr, kr.target)}</span>
-                                </span>
+                            <span className="text-xs text-text-secondary font-medium">
+                                {formatKeyResultValue(kr, kr.current)} / <span className="text-text-tertiary">{formatKeyResultValue(kr, kr.target)}</span>
+                            </span>
                                 {kr.owner && (
                                     <div className="flex items-center gap-1.5 mt-1">
                                         {kr.ownerImage ? (
@@ -661,12 +661,12 @@ export const ObjectiveDetail: React.FC<ObjectiveDetailProps> = ({ objectiveId, o
                          <div className="space-y-2 mb-4">
                              <span className="text-xs font-medium text-text-secondary">Custom Color</span>
                              <div className="flex items-center gap-3">
-                                 <input 
-                                     type="color" 
+                             <input 
+                                type="color" 
                                      className="size-12 rounded-xl cursor-pointer border-2 border-gray-200" 
-                                     value={objective.timelineColor || (getLifeAreaById(objective.lifeAreaId)?.color || '#D95829')}
-                                     onChange={handleUpdateTimelineColor}
-                                 />
+                                value={objective.timelineColor || (getLifeAreaById(objective.lifeAreaId)?.color || '#D95829')}
+                                onChange={handleUpdateTimelineColor}
+                             />
                                  <input
                                      type="text"
                                      className="flex-1 p-2 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-primary text-sm font-mono"

@@ -4,7 +4,8 @@ export enum View {
   RELATIONSHIPS = 'RELATIONSHIPS',
   FRIEND_DETAIL = 'FRIEND_DETAIL',
   MAP = 'MAP',
-  TASKS = 'TASKS',
+  TASKS = 'TASKS', // Tasks Week View
+  TASKS_OVERVIEW = 'TASKS_OVERVIEW', // Tasks Overview Page
   PROFILE = 'PROFILE', // Personal Settings
   SETTINGS = 'SETTINGS', // General Settings
   SYNCED_ACCOUNTS = 'SYNCED_ACCOUNTS', // New
@@ -21,7 +22,12 @@ export enum View {
   TODAY = 'TODAY', // Enhanced Today view
   DAY_PARTS_SETTINGS = 'DAY_PARTS_SETTINGS', // Day Parts Configuration
   STATISTICS = 'STATISTICS', // Statistics Dashboard
-  FIREBASE_AUTH = 'FIREBASE_AUTH' // Firebase Authentication
+  FIREBASE_AUTH = 'FIREBASE_AUTH', // Firebase Authentication
+  CONFLICT_MANAGEMENT = 'CONFLICT_MANAGEMENT', // Conflict Management
+  HABIT_DETAIL = 'HABIT_DETAIL', // Habit Detail View
+  HABIT_ANALYTICS = 'HABIT_ANALYTICS', // Habit Analytics Dashboard
+  HABIT_TEMPLATES = 'HABIT_TEMPLATES', // Habit Template Library
+  HABITS = 'HABITS' // Habits Overview Page
 }
 
 export type EntityType = 'task' | 'habit' | 'friend' | 'objective' | 'keyResult' | 'place' | 'lifeArea' | 'vision' | 'timeSlot';
@@ -59,14 +65,67 @@ export interface TeamMember {
 // Sync Metadata
 export interface SyncMetadata {
   lastSyncedAt?: string; // ISO timestamp
-  syncStatus: 'synced' | 'pending' | 'conflict' | 'error';
+  syncStatus: 'synced' | 'pending' | 'syncing' | 'conflict' | 'error';
   externalId?: string; // ID in external service
   externalService: 'google_calendar' | 'google_tasks' | 'google_contacts' | 'asana';
-  conflictDetails?: {
-    field: string;
-    appValue: any;
-    externalValue: any;
-  }[];
+  syncVersion?: number; // Versie nummer voor conflict detection
+  syncDirection?: 'export' | 'import' | 'bidirectional';
+  syncErrors?: string[]; // Lijst van sync errors
+  conflictDetails?: ConflictDetails;
+  appLastModified?: string; // ISO timestamp laatste wijziging in app
+  externalLastModified?: string; // ISO timestamp laatste wijziging in externe service
+}
+
+// Conflict Details
+export interface ConflictDetails {
+  field: string;
+  appValue: any;
+  externalValue: any;
+}
+
+// Conflict interface
+export interface Conflict {
+  id: string;
+  entityType: 'task' | 'timeSlot' | 'objective' | 'friend';
+  entityId: string;
+  service: 'google_calendar' | 'google_tasks' | 'google_contacts' | 'asana';
+  appValue: any; // Huidige waarde in app
+  externalValue: any; // Huidige waarde in externe service
+  conflictFields: FieldDifference[]; // Welke velden conflicteren
+  appLastModified: string; // ISO timestamp
+  externalLastModified: string; // ISO timestamp
+  detectedAt: string; // ISO timestamp wanneer conflict gedetecteerd is
+  resolvedAt?: string; // ISO timestamp wanneer conflict opgelost is
+  resolution?: ConflictResolution;
+  priority: 'low' | 'medium' | 'high'; // Prioriteit van conflict
+}
+
+// Field difference details
+export interface FieldDifference {
+  field: string; // Naam van het veld
+  appValue: any; // Waarde in app
+  externalValue: any; // Waarde in externe service
+  fieldType: 'string' | 'number' | 'boolean' | 'date' | 'array' | 'object';
+  canMerge: boolean; // Of velden kunnen worden gemerged
+}
+
+// Conflict resolution strategie
+export interface ConflictResolution {
+  strategy: 'app_wins' | 'external_wins' | 'last_write_wins' | 'merge' | 'manual';
+  resolvedBy?: string; // User ID of 'system'
+  resolvedAt: string; // ISO timestamp
+  finalValue?: any; // Finale waarde na resolutie
+  mergedFields?: { [field: string]: any }; // Voor merge strategie
+}
+
+// Conflict resolution configuratie
+export interface ConflictResolutionConfig {
+  defaultStrategy: 'app_wins' | 'external_wins' | 'last_write_wins' | 'merge' | 'manual';
+  autoResolve: boolean; // Automatisch oplossen zonder user input
+  notifyOnConflict: boolean; // Notificatie bij conflict
+  perServiceStrategy?: {
+    [service: string]: 'app_wins' | 'external_wins' | 'last_write_wins' | 'merge' | 'manual';
+  };
 }
 
 export interface Task {
@@ -109,6 +168,74 @@ export interface Habit {
   // Goal-First fields
   objectiveId?: string; // Link naar Goal
   lifeAreaId?: string; // Link naar Life Area
+  // Extended History (Fase 2)
+  monthlyHistory?: { [date: string]: boolean }; // Extended history: date -> completed (YYYY-MM-DD format)
+  completionHistory?: CompletionRecord[]; // All completions with timestamps
+  longestStreak?: number; // All-time best streak
+  totalCompletions?: number; // All-time count
+  createdAt?: string; // When habit was created (ISO timestamp)
+  // Editor improvements (Fase 2)
+  targetFrequency?: number; // e.g., 5 (times per week)
+  reminderTime?: string; // e.g., "08:00"
+  color?: string; // Custom color for habit
+  category?: string; // e.g., "Health", "Productivity"
+  notes?: string; // User notes/reflections
+  // Template reference (Fase 4)
+  templateId?: string; // ID of template used to create this habit
+}
+
+// Completion record with timestamp
+export interface CompletionRecord {
+  date: string; // YYYY-MM-DD
+  timestamp: string; // ISO timestamp
+  timeOfDay?: string; // HH:mm (optional, for analytics)
+}
+
+// Habit Template (Fase 4)
+export interface HabitTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  icon: string;
+  category: string; // "Health", "Productivity", "Learning", etc.
+  color?: string;
+  // Template data
+  habitData: Partial<Habit>; // All habit fields except id, completed, streak
+  // Metadata
+  usageCount: number;
+  lastUsed?: string; // ISO timestamp
+  isDefault: boolean; // System template vs user template
+  createdAt: string;
+  updatedAt: string;
+  tags?: string[]; // For search/filtering
+}
+
+// Habit Analytics (Fase 3)
+export interface HabitAnalytics {
+  habitId: string;
+  // Trends
+  completionTrend: 'increasing' | 'decreasing' | 'stable';
+  trendPercentage: number; // Percentage change
+  // Patterns
+  bestDayOfWeek: number; // 0-6 (Sunday-Saturday)
+  bestTimeOfDay?: string; // Most common completion time
+  weekdayCompletionRate: number; // 0-1
+  weekendCompletionRate: number; // 0-1
+  // Correlations
+  correlatedHabits?: Array<{
+    habitId: string;
+    habitName: string;
+    correlationScore: number; // 0-1 (how often done together)
+  }>;
+  // Milestones
+  currentStreak: number;
+  longestStreak: number;
+  streakMilestones: number[]; // [7, 30, 100, etc.] - achieved milestones
+  // Overall stats
+  completionRate30Days: number; // 0-1
+  completionRate90Days: number; // 0-1
+  totalCompletions: number;
+  averageCompletionsPerWeek: number;
 }
 
 // Parent Goal
@@ -226,6 +353,51 @@ export interface DayPart {
   order: number;
 }
 
+// Notifications & Reminders
+export interface Reminder {
+  id: string;
+  entityType: EntityType; // 'task' | 'habit' | 'objective' | 'timeSlot'
+  entityId: string; // ID van de gekoppelde entiteit
+  title: string; // Titel van de reminder (meestal entiteit titel)
+  scheduledTime: string; // ISO timestamp wanneer reminder moet worden getoond
+  offsetMinutes: number; // Hoeveel minuten voor de scheduledTime (bijv. -15 voor 15 minuten ervoor)
+  completed: boolean; // Of de reminder al is getoond/afgehandeld
+  createdAt: string; // ISO timestamp wanneer reminder is aangemaakt
+  updatedAt: string; // ISO timestamp laatste update
+}
+
+export interface Notification {
+  id: string;
+  type: 'reminder' | 'achievement' | 'system' | 'social';
+  title: string;
+  message: string;
+  icon: string; // Material icon name
+  color: string; // Hex color voor icon background
+  read: boolean;
+  createdAt: string; // ISO timestamp
+  actionUrl?: string; // Optionele link naar gerelateerde entiteit/view
+  entityType?: EntityType;
+  entityId?: string;
+  reminderId?: string; // Link naar Reminder als type === 'reminder'
+}
+
+export interface NotificationSettings {
+  enabled: boolean; // Globale notificatie toggle
+  browserNotifications: boolean; // Web browser notifications
+  soundEnabled: boolean; // Geluid bij notificaties
+  reminderDefaults: {
+    task: number; // Default offset in minuten voor tasks (bijv. 15)
+    habit: number; // Default offset voor habits
+    objective: number; // Default offset voor objectives
+    timeSlot: number; // Default offset voor timeSlots
+  };
+  quietHours: {
+    enabled: boolean;
+    startTime: string; // HH:mm (bijv. "22:00")
+    endTime: string; // HH:mm (bijv. "08:00")
+  };
+}
+
 export interface DataContextType {
   userProfile: UserProfile;
   tasks: Task[];
@@ -244,12 +416,16 @@ export interface DataContextType {
   timeSlots: TimeSlot[];
   dayParts: DayPart[];
   statusUpdates: StatusUpdate[];
+  reminders: Reminder[];
+  notifications: Notification[];
+  notificationSettings: NotificationSettings;
   
   updateUserProfile: (profile: Partial<UserProfile>) => void;
   
   addTask: (task: Task) => void;
   updateTask: (task: Task) => void;
   deleteTask: (id: string) => void;
+  deleteCompletedTasks: () => number; // Returns number of deleted tasks
   
   addHabit: (habit: Habit) => void;
   updateHabit: (habit: Habit) => void;
@@ -323,6 +499,22 @@ export interface DataContextType {
   setDarkMode: (enabled: boolean) => void;
   setShowCategory: (enabled: boolean) => void;
 
+  // Notifications & Reminders
+  addReminder: (reminder: Reminder) => void;
+  updateReminder: (reminder: Reminder) => void;
+  deleteReminder: (id: string) => void;
+  getRemindersByEntity: (entityType: EntityType, entityId: string) => Reminder[];
+  getUpcomingReminders: (limit?: number) => Reminder[];
+  
+  addNotification: (notification: Notification) => void;
+  updateNotification: (notification: Notification) => void;
+  deleteNotification: (id: string) => void;
+  markNotificationAsRead: (id: string) => void;
+  markAllNotificationsAsRead: () => void;
+  getUnreadNotificationsCount: () => number;
+  
+  updateNotificationSettings: (settings: Partial<NotificationSettings>) => void;
+
   clearAllData: () => Promise<void>;
   restoreExampleData: () => void;
   
@@ -331,4 +523,20 @@ export interface DataContextType {
   triggerSync: () => Promise<void>;
   getSyncConfig: () => any;
   updateSyncConfig: (config: Partial<any>) => void;
+  
+  // Conflict management
+  conflicts: Conflict[];
+  getConflicts: () => Conflict[];
+  getConflictsByType: (entityType: Conflict['entityType']) => Conflict[];
+  getConflictsByService: (service: Conflict['service']) => Conflict[];
+  detectConflicts: () => Promise<Conflict[]>;
+  resolveConflict: (conflictId: string, strategy?: ConflictResolution['strategy']) => Promise<void>;
+  autoResolveConflicts: () => Promise<void>;
+  updateConflictResolutionConfig: (config: Partial<ConflictResolutionConfig>) => void;
+  
+  // Import functions
+  importTasksFromGoogle: (taskListIds?: string[]) => Promise<{ imported: number; updated: number; conflicts: number }>;
+  importTimeSlotsFromCalendar: (calendarIds?: string[]) => Promise<{ imported: number; updated: number; conflicts: number }>;
+  startAutoImport: (intervalMinutes?: number) => Promise<void>;
+  stopAutoImport: () => void;
 }

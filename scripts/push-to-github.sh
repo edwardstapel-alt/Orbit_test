@@ -41,3 +41,6 @@ echo "💡 Tip: Voor toekomstige pushes, gebruik GitHub CLI:"
 echo "   brew install gh"
 echo "   gh auth login"
 
+
+
+

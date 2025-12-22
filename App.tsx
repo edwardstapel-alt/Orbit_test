@@ -25,6 +25,12 @@ import { Calendar } from './views/Calendar';
 import { UnifiedSearch } from './components/UnifiedSearch';
 import { Statistics } from './views/Statistics';
 import { FirebaseAuth } from './views/FirebaseAuth';
+import { ConflictManagement } from './views/ConflictManagement';
+import { HabitDetail } from './views/HabitDetail';
+import { HabitAnalytics } from './views/HabitAnalytics';
+import { HabitTemplates } from './views/HabitTemplates';
+import { Habits } from './views/Habits';
+import { TasksOverview } from './views/TasksOverview';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<View>(View.DASHBOARD);
@@ -42,6 +48,7 @@ export default function App() {
   // Detail View States
   const [selectedObjectiveId, setSelectedObjectiveId] = useState<string | undefined>(undefined);
   const [selectedLifeAreaId, setSelectedLifeAreaId] = useState<string | undefined>(undefined);
+  const [selectedHabitId, setSelectedHabitId] = useState<string | undefined>(undefined);
 
   // Main navigation views (bottom nav items)
   const mainNavViews = [
@@ -144,6 +151,11 @@ export default function App() {
     navigateTo(View.LIFE_AREA_DETAIL);
   };
 
+  const handleViewHabit = (id: string) => {
+    setSelectedHabitId(id);
+    navigateTo(View.HABIT_DETAIL);
+  };
+
   const handleUpdateKeyResult = (id: string) => {
     openEditor('keyResult', id);
   };
@@ -175,9 +187,19 @@ export default function App() {
     switch (currentView) {
       case View.DASHBOARD:
         return <Dashboard 
-                onNavigate={navigateTo} 
+                onNavigate={(view, habitId?, lifeAreaId?) => {
+                  if (view === View.HABIT_DETAIL && habitId) {
+                    setSelectedHabitId(habitId);
+                    navigateTo(View.HABIT_DETAIL);
+                  } else if (view === View.LIFE_AREA_DETAIL && lifeAreaId) {
+                    handleViewLifeArea(lifeAreaId);
+                  } else {
+                    navigateTo(view);
+                  }
+                }} 
                 onEdit={openEditor} 
                 onViewObjective={handleViewObjective}
+                onViewLifeArea={handleViewLifeArea}
                 onMenuClick={openMenu}
                 onProfileClick={openProfile}
                />;
@@ -201,6 +223,8 @@ export default function App() {
         return <MapDiscovery onEdit={openEditor} />;
       case View.TASKS:
         return <Tasks onEdit={openEditor} onNavigate={navigateTo} onMenuClick={openMenu} onProfileClick={openProfile} />;
+      case View.TASKS_OVERVIEW:
+        return <TasksOverview onEdit={openEditor} onNavigate={navigateTo} onMenuClick={openMenu} onProfileClick={openProfile} onBack={navigateBack} />;
       case View.TODAY:
         return <Today 
                   onEdit={openEditor} 
@@ -222,13 +246,15 @@ export default function App() {
       case View.PROFILE:
         return <PersonalSettings onBack={navigateBack} />;
       case View.SYNCED_ACCOUNTS:
-        return <SyncedAccounts onBack={navigateBackToSettings} />;
+        return <SyncedAccounts onBack={navigateBackToSettings} onNavigate={navigateTo} />;
       case View.TEAM_SETTINGS:
         return <TeamSettings onBack={navigateBackToSettings} />;
       case View.DATA_MANAGEMENT:
         return <DataManagement onBack={navigateBackToSettings} />;
       case View.FIREBASE_AUTH:
         return <FirebaseAuth onBack={navigateBackToSettings} onAuthenticated={() => navigateBackToSettings()} />;
+      case View.CONFLICT_MANAGEMENT:
+        return <ConflictManagement onNavigate={navigateTo} onMenuClick={openMenu} onProfileClick={openProfile} />;
       case View.DAY_PARTS_SETTINGS:
         return <DayPartsSettings onBack={navigateBackToSettings} onNavigate={navigateTo} />;
       case View.NOTIFICATIONS:
@@ -312,6 +338,43 @@ export default function App() {
                   onProfileClick={openProfile}
                   onViewObjective={handleViewObjective}
                />;
+      case View.HABIT_DETAIL:
+        return <HabitDetail 
+                  habitId={selectedHabitId || ''}
+                  onBack={navigateBack}
+                  onEdit={() => openEditor('habit', selectedHabitId)}
+                  onNavigate={navigateTo}
+               />;
+      case View.HABIT_ANALYTICS:
+        return <HabitAnalytics 
+                  onNavigate={navigateTo}
+                  onMenuClick={openMenu}
+                  onProfileClick={openProfile}
+                  onBack={navigateBack}
+               />;
+      case View.HABIT_TEMPLATES:
+        return <HabitTemplates 
+                  onNavigate={navigateTo}
+                  onMenuClick={openMenu}
+                  onProfileClick={openProfile}
+                  onEdit={openEditor}
+                  onBack={navigateBack}
+               />;
+      case View.HABITS:
+        return <Habits 
+                  onNavigate={(view, habitId?) => {
+                    if (view === View.HABIT_DETAIL && habitId) {
+                      setSelectedHabitId(habitId);
+                      navigateTo(View.HABIT_DETAIL);
+                    } else {
+                      navigateTo(view);
+                    }
+                  }}
+                  onEdit={openEditor}
+                  onMenuClick={openMenu}
+                  onProfileClick={openProfile}
+                  onBack={navigateBack}
+               />;
       default:
         return <Dashboard 
                 onNavigate={navigateTo} 
@@ -332,7 +395,9 @@ export default function App() {
     currentView !== View.DATA_MANAGEMENT && 
     currentView !== View.DAY_PARTS_SETTINGS &&
     currentView !== View.NOTIFICATIONS &&
+    currentView !== View.CONFLICT_MANAGEMENT &&
     currentView !== View.OBJECTIVE_DETAIL &&
+    currentView !== View.HABIT_DETAIL &&
     currentView !== View.MAP &&
     currentView !== View.EDITOR &&
     currentView !== View.RELATIONSHIPS &&

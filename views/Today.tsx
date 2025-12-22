@@ -3,6 +3,7 @@ import { useData } from '../context/DataContext';
 import { EntityType, View, Task, Habit, TimeSlot } from '../types';
 import { TopNav } from '../components/TopNav';
 import { EntityFilter, FilterState } from '../components/EntityFilter';
+import { recordHabitCompletion, recordHabitMiss } from '../utils/habitHistory';
 
 interface TodayProps {
   onEdit: (type: EntityType, id?: string, parentId?: string, context?: { objectiveId?: string; lifeAreaId?: string }) => void;
@@ -187,67 +188,57 @@ export const Today: React.FC<TodayProps> = ({ onEdit, onNavigate, onMenuClick, o
     }
 
     const habit = habits.find(h => h.id === habitId);
-    if (habit) {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const selectedDateNormalized = new Date(selectedDate);
-      selectedDateNormalized.setHours(0, 0, 0, 0);
-      
-      // Calculate days difference between selected date and today
-      const daysDiff = Math.floor((today.getTime() - selectedDateNormalized.getTime()) / (1000 * 60 * 60 * 24));
-      
-      // weeklyProgress array: [today, yesterday, 2 days ago, ..., 6 days ago]
-      // Index 0 = today, index 1 = yesterday, etc.
-      const newHistory = [...(habit.weeklyProgress || [false, false, false, false, false, false, false])];
-      
-      // Only allow toggling if the date is within the last 7 days
-      if (daysDiff < 0 || daysDiff >= 7) {
-        return; // Can't toggle dates outside the 7-day window
-      }
-      
-      const wasCompleted = newHistory[daysDiff];
-      newHistory[daysDiff] = !newHistory[daysDiff];
-      const isNowCompleted = newHistory[daysDiff];
-      
-      // Recalculate streak based on the updated weeklyProgress
-      const newStreak = calculateStreak(newHistory);
-      
-      // Update completed status only if this is today
-      const isSelectedDateToday = daysDiff === 0;
-      const newCompleted = isSelectedDateToday ? isNowCompleted : habit.completed;
-      
-      updateHabit({
-        ...habit,
-        completed: newCompleted,
-        streak: newStreak,
-        weeklyProgress: newHistory
-      });
+    if (!habit) return;
 
-      // Update Key Result progress if habit is linked and has contribution value
-      // Only update if this is today
-      if (isSelectedDateToday && habit.linkedKeyResultId && habit.progressContribution && habit.progressContribution > 0) {
-        const keyResult = keyResults.find(kr => kr.id === habit.linkedKeyResultId);
-        if (keyResult) {
-          const contribution = habit.progressContribution;
-          let newCurrent = keyResult.current;
-          
-          if (isNowCompleted && !wasCompleted) {
-            // Habit was just completed - add contribution
-            newCurrent = Math.min(keyResult.current + contribution, keyResult.target);
-          } else if (!isNowCompleted && wasCompleted) {
-            // Habit was uncompleted - subtract contribution
-            newCurrent = Math.max(keyResult.current - contribution, 0);
-          }
-          
-          if (newCurrent !== keyResult.current) {
-            updateKeyResult({
-              ...keyResult,
-              current: newCurrent
-            });
-          }
+    const dateStr = todayString;
+    const monthlyHistory = habit.monthlyHistory || {};
+    const isCompleted = monthlyHistory[dateStr] === true;
+
+    // Use extended history tracking
+    const updated = isCompleted
+      ? recordHabitMiss(habit, dateStr)
+      : recordHabitCompletion(habit, dateStr);
+
+    // Also update weeklyProgress for backward compatibility
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const selectedDateNormalized = new Date(selectedDate);
+    selectedDateNormalized.setHours(0, 0, 0, 0);
+    const daysDiff = Math.floor((today.getTime() - selectedDateNormalized.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (daysDiff >= 0 && daysDiff < 7) {
+      const newHistory = [...(updated.weeklyProgress || [false, false, false, false, false, false, false])];
+      newHistory[daysDiff] = !isCompleted;
+      updated.weeklyProgress = newHistory;
+    }
+
+    // Update Key Result progress if habit is linked and has contribution value
+    // Only update if this is today
+    const isSelectedDateToday = daysDiff === 0;
+    if (isSelectedDateToday && habit.linkedKeyResultId && habit.progressContribution && habit.progressContribution > 0) {
+      const keyResult = keyResults.find(kr => kr.id === habit.linkedKeyResultId);
+      if (keyResult) {
+        const contribution = habit.progressContribution;
+        let newCurrent = keyResult.current;
+        
+        if (!isCompleted) {
+          // Habit was just completed - add contribution
+          newCurrent = Math.min(keyResult.current + contribution, keyResult.target);
+        } else {
+          // Habit was uncompleted - subtract contribution
+          newCurrent = Math.max(keyResult.current - contribution, 0);
+        }
+        
+        if (newCurrent !== keyResult.current) {
+          updateKeyResult({
+            ...keyResult,
+            current: newCurrent
+          });
         }
       }
     }
+
+    updateHabit(updated);
   };
 
   // Navigate to previous/next day

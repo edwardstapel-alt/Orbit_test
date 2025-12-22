@@ -197,6 +197,20 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({ onBack, onNavi
             <span className="material-symbols-outlined text-text-tertiary">chevron_right</span>
           </button>
 
+          <button onClick={() => onNavigate(View.NOTIFICATIONS)} className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors border-b border-gray-100">
+            <div className="flex items-center gap-3">
+              <span className="material-symbols-outlined text-text-secondary">notifications</span>
+              <span className="text-text-main font-medium">Notifications</span>
+            </div>
+            <span className="material-symbols-outlined text-text-tertiary">chevron_right</span>
+          </button>
+          <button onClick={() => onNavigate(View.NOTIFICATION_SETTINGS)} className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors border-b border-gray-100">
+            <div className="flex items-center gap-3">
+              <span className="material-symbols-outlined text-text-secondary">settings</span>
+              <span className="text-text-main font-medium">Notification Settings</span>
+            </div>
+            <span className="material-symbols-outlined text-text-tertiary">chevron_right</span>
+          </button>
           <button onClick={() => onNavigate(View.DATA_MANAGEMENT)} className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors border-b border-gray-100">
             <div className="flex items-center gap-3">
               <span className="material-symbols-outlined text-text-secondary">database</span>

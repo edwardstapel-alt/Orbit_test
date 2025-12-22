@@ -9,8 +9,11 @@ import {
   exportTaskToGoogleTasks,
   exportFriendToGoogleContacts,
   importGoogleContacts,
-  getGoogleTaskLists
+  getGoogleTaskLists,
+  importGoogleTasks
 } from '../utils/googleSync';
+import { syncService } from '../utils/syncService';
+import { View } from '../types';
 
 declare global {
     interface Window {
@@ -21,9 +24,10 @@ declare global {
 
 interface SyncedAccountsProps {
   onBack: () => void;
+  onNavigate?: (view: any) => void;
 }
 
-export const SyncedAccounts: React.FC<SyncedAccountsProps> = ({ onBack }) => {
+export const SyncedAccounts: React.FC<SyncedAccountsProps> = ({ onBack, onNavigate }) => {
   const { 
     updateUserProfile, 
     addTask, 
@@ -37,7 +41,12 @@ export const SyncedAccounts: React.FC<SyncedAccountsProps> = ({ onBack }) => {
     updateFriend,
     addFriend,
     getSyncQueueStatus,
-    triggerSync
+    triggerSync,
+    importTasksFromGoogle,
+    getSyncConfig,
+    updateSyncConfig,
+    startAutoImport,
+    stopAutoImport
   } = useData();
   const [googleConnected, setGoogleConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -46,6 +55,11 @@ export const SyncedAccounts: React.FC<SyncedAccountsProps> = ({ onBack }) => {
   const [showHelp, setShowHelp] = useState(false);
   const [currentOrigin, setCurrentOrigin] = useState('');
   const [googleApiLoaded, setGoogleApiLoaded] = useState(false);
+  const [taskLists, setTaskLists] = useState<Array<{ id: string; title: string }>>([]);
+  const [selectedTaskLists, setSelectedTaskLists] = useState<string[]>([]);
+  const [syncDirection, setSyncDirection] = useState<'export' | 'import' | 'bidirectional'>('bidirectional');
+  const [autoImportEnabled, setAutoImportEnabled] = useState(false);
+  const [autoImportInterval, setAutoImportInterval] = useState(30);
   
   // Scopes for People (Profile, Email, DOB), Calendar, and Tasks
   // Note: calendar and tasks now have write access for bi-directional sync
@@ -80,7 +94,55 @@ export const SyncedAccounts: React.FC<SyncedAccountsProps> = ({ onBack }) => {
     
     // Start checking after a short delay to allow scripts to load
     setTimeout(checkGoogleApi, 500);
+
+    // Load saved sync settings
+    const savedTaskLists = localStorage.getItem('google_tasks_selected_lists');
+    if (savedTaskLists) {
+      try {
+        setSelectedTaskLists(JSON.parse(savedTaskLists));
+      } catch (e) {
+        console.error('Failed to load saved task lists:', e);
+      }
+    }
+
+    const savedSyncDirection = localStorage.getItem('google_tasks_sync_direction');
+    if (savedSyncDirection) {
+      setSyncDirection(savedSyncDirection as 'export' | 'import' | 'bidirectional');
+    }
+
+    const savedAutoImport = localStorage.getItem('google_tasks_auto_import');
+    if (savedAutoImport === 'true') {
+      setAutoImportEnabled(true);
+      const savedInterval = localStorage.getItem('google_tasks_auto_import_interval');
+      if (savedInterval) {
+        setAutoImportInterval(parseInt(savedInterval, 10));
+      }
+    }
+
+    // Load task lists if connected
+    if (localStorage.getItem('orbit_google_sync') === 'true') {
+      loadTaskLists();
+    }
   }, []);
+
+  const loadTaskLists = async () => {
+    const token = getAccessToken();
+    if (!token) return;
+
+    try {
+      const result = await getGoogleTaskLists(token);
+      if (result.success && result.taskLists) {
+        setTaskLists(result.taskLists);
+        
+        // If no saved selection, select all lists by default
+        if (selectedTaskLists.length === 0) {
+          setSelectedTaskLists(result.taskLists.map(list => list.id));
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load task lists:', error);
+    }
+  };
 
   const handleAuthClick = () => {
     const cleanClientId = clientId.trim();
@@ -491,6 +553,15 @@ export const SyncedAccounts: React.FC<SyncedAccountsProps> = ({ onBack }) => {
                             <span className="material-symbols-outlined text-base">refresh</span>
                             Handmatig Sync Nu
                         </button>
+                        {onNavigate && (
+                            <button
+                                onClick={() => onNavigate(View.CONFLICT_MANAGEMENT)}
+                                className="w-full py-2 px-4 border-2 border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold rounded-xl transition-colors text-sm flex items-center justify-center gap-2"
+                            >
+                                <span className="material-symbols-outlined text-base">warning</span>
+                                Conflict Beheer
+                            </button>
+                        )}
                     </div>
                 </div>
                 
@@ -688,6 +759,195 @@ export const SyncedAccounts: React.FC<SyncedAccountsProps> = ({ onBack }) => {
                             <span className="material-symbols-outlined text-base">upload</span>
                             Export Tasks ({tasks.length})
                         </button>
+                    </div>
+                </div>
+
+                {/* Google Tasks Sync Settings */}
+                <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-slate-100">
+                    <div className="p-4 border-b border-gray-100">
+                        <div className="flex items-center gap-3 mb-3">
+                            <div className="size-10 rounded-full bg-orange-50 flex items-center justify-center text-orange-600">
+                                <span className="material-symbols-outlined">sync</span>
+                            </div>
+                            <div className="flex-1">
+                                <p className="text-sm font-bold text-text-main">Google Tasks Sync</p>
+                                <p className="text-[10px] text-text-tertiary">Bi-directionele synchronisatie met Google Tasks</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="p-4 space-y-4">
+                        {/* Task Lists Selector */}
+                        <div>
+                            <label className="block text-sm font-medium text-text-main mb-2">
+                                Selecteer Task Lists
+                            </label>
+                            <div className="space-y-2 max-h-48 overflow-y-auto border border-gray-200 rounded-lg p-3">
+                                {taskLists.length === 0 ? (
+                                    <p className="text-sm text-text-tertiary text-center py-2">
+                                        Geen task lists gevonden. Klik op "Laad Task Lists" om te laden.
+                                    </p>
+                                ) : (
+                                    taskLists.map(list => (
+                                        <label key={list.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedTaskLists.includes(list.id)}
+                                                onChange={(e) => {
+                                                    if (e.target.checked) {
+                                                        setSelectedTaskLists([...selectedTaskLists, list.id]);
+                                                    } else {
+                                                        setSelectedTaskLists(selectedTaskLists.filter(id => id !== list.id));
+                                                    }
+                                                }}
+                                                className="rounded"
+                                            />
+                                            <span className="text-sm text-text-main flex-1">{list.title}</span>
+                                        </label>
+                                    ))
+                                )}
+                            </div>
+                            <button
+                                onClick={loadTaskLists}
+                                disabled={isLoading || !googleConnected}
+                                className="mt-2 text-xs text-primary hover:underline disabled:text-gray-400"
+                            >
+                                Laad Task Lists
+                            </button>
+                        </div>
+
+                        {/* Sync Direction */}
+                        <div>
+                            <label className="block text-sm font-medium text-text-main mb-2">
+                                Sync Richting
+                            </label>
+                            <select
+                                value={syncDirection}
+                                onChange={(e) => setSyncDirection(e.target.value as any)}
+                                className="w-full p-2 border border-gray-300 rounded-lg text-sm"
+                            >
+                                <option value="export">Alleen Export (App → Google)</option>
+                                <option value="import">Alleen Import (Google → App)</option>
+                                <option value="bidirectional">Bi-directioneel</option>
+                            </select>
+                        </div>
+
+                        {/* Auto-Import Toggle */}
+                        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                            <div className="flex-1">
+                                <label className="block text-sm font-medium text-text-main">
+                                    Auto-Import
+                                </label>
+                                <p className="text-xs text-text-tertiary">
+                                    Automatisch Google Tasks importeren
+                                </p>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={autoImportEnabled}
+                                    onChange={(e) => {
+                                        const enabled = e.target.checked;
+                                        setAutoImportEnabled(enabled);
+                                        if (enabled) {
+                                            importTasksFromGoogle(selectedTaskLists.length > 0 ? selectedTaskLists : undefined)
+                                                .then(() => {
+                                                    startAutoImport(autoImportInterval);
+                                                })
+                                                .catch(err => {
+                                                    console.error('Auto-import start failed:', err);
+                                                    setAutoImportEnabled(false);
+                                                });
+                                        } else {
+                                            stopAutoImport();
+                                        }
+                                    }}
+                                    className="sr-only peer"
+                                />
+                                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                            </label>
+                        </div>
+
+                        {autoImportEnabled && (
+                            <div>
+                                <label className="block text-sm font-medium text-text-main mb-2">
+                                    Import Interval (minuten)
+                                </label>
+                                <input
+                                    type="number"
+                                    min="5"
+                                    max="1440"
+                                    value={autoImportInterval}
+                                    onChange={(e) => {
+                                        const interval = parseInt(e.target.value, 10);
+                                        setAutoImportInterval(interval);
+                                        if (autoImportEnabled) {
+                                            stopAutoImport();
+                                            startAutoImport(interval);
+                                        }
+                                    }}
+                                    className="w-full p-2 border border-gray-300 rounded-lg text-sm"
+                                />
+                            </div>
+                        )}
+
+                        {/* Actions */}
+                        <div className="flex gap-2 pt-2 border-t border-gray-200">
+                        <button
+                            onClick={async () => {
+                                const token = getAccessToken();
+                                if (!token) {
+                                    alert('Niet verbonden met Google. Verbind opnieuw.');
+                                    return;
+                                }
+                                
+                                setIsLoading(true);
+                                setSyncStatus('Google Tasks importeren...');
+                                
+                                try {
+                                        const result = await importTasksFromGoogle(
+                                            selectedTaskLists.length > 0 ? selectedTaskLists : undefined
+                                        );
+                                    setSyncStatus(`Import voltooid: ${result.imported} nieuw, ${result.updated} bijgewerkt, ${result.conflicts} conflicten`);
+                                    
+                                    if (result.imported > 0 || result.updated > 0) {
+                                        alert(`✓ Import succesvol!\n\n${result.imported} nieuwe task(s)\n${result.updated} bijgewerkte task(s)${result.conflicts > 0 ? `\n${result.conflicts} conflict(en) gedetecteerd` : ''}`);
+                                    } else {
+                                        alert('Geen nieuwe of bijgewerkte tasks gevonden.');
+                                    }
+                                } catch (error: any) {
+                                    setSyncStatus(`Import mislukt: ${error.message}`);
+                                    alert(`Import mislukt: ${error.message}`);
+                                } finally {
+                                    setIsLoading(false);
+                                }
+                            }}
+                                disabled={isLoading || (syncDirection === 'export' && selectedTaskLists.length === 0)}
+                                className="flex-1 py-2.5 px-4 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-colors text-sm flex items-center justify-center gap-2"
+                        >
+                            <span className="material-symbols-outlined text-base">download</span>
+                                Import Nu
+                            </button>
+                            <button
+                                onClick={() => {
+                                    localStorage.setItem('google_tasks_selected_lists', JSON.stringify(selectedTaskLists));
+                                    localStorage.setItem('google_tasks_sync_direction', syncDirection);
+                                    localStorage.setItem('google_tasks_auto_import', autoImportEnabled.toString());
+                                    localStorage.setItem('google_tasks_auto_import_interval', autoImportInterval.toString());
+                                    
+                                    // Update sync config
+                                    const syncConfig = getSyncConfig();
+                                    updateSyncConfig({
+                                        ...syncConfig,
+                                        syncTasks: syncDirection !== 'export',
+                                    });
+                                    
+                                    alert('Instellingen opgeslagen');
+                                }}
+                                className="px-4 py-2.5 border border-gray-300 rounded-xl font-medium hover:bg-gray-50 transition-colors text-sm"
+                            >
+                                Opslaan
+                        </button>
+                        </div>
                     </div>
                 </div>
 
