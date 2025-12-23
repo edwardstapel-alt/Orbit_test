@@ -38,42 +38,8 @@
         lastTouchEnd = now;
       }, false);
       
-      // Prevent pull-to-refresh on mobile (only when at top and scrolling down)
-      let touchStartY = 0;
-      let touchStartScrollY = 0;
-      
-      document.addEventListener('touchstart', function(e) {
-        touchStartY = e.touches[0].clientY;
-        // Check scroll position of the main scroll container or window
-        const scrollContainer = document.querySelector('.overflow-y-auto') || document.documentElement;
-        touchStartScrollY = scrollContainer.scrollTop || window.scrollY || 0;
-      }, { passive: true });
-      
-      document.addEventListener('touchmove', function(e) {
-        const touchY = e.touches[0].clientY;
-        const touchDiff = touchY - touchStartY;
-        const scrollContainer = document.querySelector('.overflow-y-auto') || document.documentElement;
-        const currentScrollY = scrollContainer.scrollTop || window.scrollY || 0;
-        
-        // Always allow scrolling up (negative touchDiff)
-        if (touchDiff < 0) {
-          return; // Allow normal scrolling up
-        }
-        
-        // Allow scrolling if already scrolled down from start
-        if (touchStartScrollY > 0 || currentScrollY > 0) {
-          return; // Allow normal scrolling
-        }
-        
-        // Only prevent pull-to-refresh when:
-        // 1. Scrolling down (touchDiff > 0)
-        // 2. Already at the top (currentScrollY === 0)
-        // 3. Started at the top (touchStartScrollY === 0)
-        // 4. Significant downward movement (more than 10px to avoid accidental blocks)
-        if (touchDiff > 10 && currentScrollY === 0 && touchStartScrollY === 0) {
-          e.preventDefault();
-        }
-      }, { passive: false });
+      // Prevent pull-to-refresh on mobile (disabled - allow all scrolling)
+      // Removed aggressive blocking to allow smooth scrolling in all directions
       
       // Prevent context menu on long press (mobile)
       document.addEventListener('contextmenu', function(e) {
