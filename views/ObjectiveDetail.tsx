@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { KeyResultStatusView } from './KeyResultStatusView';
 
@@ -10,7 +10,7 @@ interface ObjectiveDetailProps {
 }
 
 export const ObjectiveDetail: React.FC<ObjectiveDetailProps> = ({ objectiveId, onBack, onEdit, onAddKR }) => {
-  const { objectives, keyResults, habits, teamMembers, updateObjective, updateHabit, updateKeyResult, lifeAreas, getLifeAreaById, showCategory, formatKeyResultValue } = useData();
+  const { objectives, keyResults, habits, teamMembers, updateObjective, updateHabit, updateKeyResult, lifeAreas, getLifeAreaById, showCategory, formatKeyResultValue, getStatusUpdatesByKeyResult } = useData();
   const [activeModal, setActiveModal] = useState<'owner' | 'date' | 'category' | 'lifeArea' | 'startDate' | 'endDate' | 'timelineColor' | 'linkHabit' | 'linkKeyResult' | null>(null);
   const [selectedKeyResultId, setSelectedKeyResultId] = useState<string | null>(null);
   
@@ -20,6 +20,14 @@ export const ObjectiveDetail: React.FC<ObjectiveDetailProps> = ({ objectiveId, o
   };
 
   const objective = objectives.find(o => o.id === objectiveId);
+  
+  // Auto-navigate back if objective was deleted
+  useEffect(() => {
+    if (!objective && objectiveId) {
+      // Objective was deleted, navigate back
+      onBack();
+    }
+  }, [objective, objectiveId, onBack]);
   
   if (!objective) return null;
 
@@ -35,15 +43,40 @@ export const ObjectiveDetail: React.FC<ObjectiveDetailProps> = ({ objectiveId, o
     ? Math.round(linkedKRs.reduce((acc, kr) => acc + (kr.current / kr.target) * 100, 0) / linkedKRs.length)
     : objective.progress;
 
+  // Helper to check if objective has any status updates (via its key results)
+  const hasObjectiveStatusUpdates = (objId: string) => {
+    const linkedKRs = keyResults.filter(kr => kr.objectiveId === objId);
+    return linkedKRs.some(kr => {
+      const updates = getStatusUpdatesByKeyResult(kr.id);
+      return updates.length > 0;
+    });
+  };
+
+  // Helper to check if key result has status updates
+  const hasKeyResultStatusUpdates = (krId: string) => {
+    const updates = getStatusUpdatesByKeyResult(krId);
+    return updates.length > 0;
+  };
+
+  // Get effective status (No status if no updates exist)
+  const getEffectiveStatus = (status: string, entityId: string, isKeyResult: boolean = false) => {
+    const hasUpdates = isKeyResult 
+      ? hasKeyResultStatusUpdates(entityId)
+      : hasObjectiveStatusUpdates(entityId);
+    return hasUpdates ? status : 'No status';
+  };
+
   const getStatusColor = (status: string) => {
     if (status === 'On Track') return 'bg-green-500';
     if (status === 'At Risk') return 'bg-amber-500';
+    if (status === 'No status') return 'bg-gray-400';
     return 'bg-red-500';
   };
 
   const getStatusBadge = (status: string) => {
     if (status === 'On Track') return 'bg-green-100 text-green-700';
     if (status === 'At Risk') return 'bg-amber-100 text-amber-700';
+    if (status === 'No status') return 'bg-gray-100 text-gray-600';
     return 'bg-red-100 text-red-700';
   };
 
@@ -93,9 +126,9 @@ export const ObjectiveDetail: React.FC<ObjectiveDetailProps> = ({ objectiveId, o
       <main className="flex-1 overflow-y-auto no-scrollbar p-6 pb-32">
         {/* Title Section */}
         <div className="mb-8 text-center">
-            <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider mb-4 ${getStatusBadge(objective.status)}`}>
-                <span className={`size-1.5 rounded-full ${getStatusColor(objective.status)}`}></span>
-                {objective.status}
+            <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider mb-4 ${getStatusBadge(getEffectiveStatus(objective.status, objective.id, false))}`}>
+                <span className={`size-1.5 rounded-full ${getStatusColor(getEffectiveStatus(objective.status, objective.id, false))}`}></span>
+                {getEffectiveStatus(objective.status, objective.id, false)}
             </div>
             <h1 className="text-2xl font-bold text-text-main leading-tight mb-2">{objective.title}</h1>
             <p className="text-text-secondary text-sm">{objective.description || "No description provided."}</p>
@@ -111,7 +144,10 @@ export const ObjectiveDetail: React.FC<ObjectiveDetailProps> = ({ objectiveId, o
                         cy="50" 
                         r="45" 
                         fill="none" 
-                        stroke={objective.status === 'On Track' ? '#22C55E' : objective.status === 'At Risk' ? '#F59E0B' : '#EF4444'} 
+                        stroke={(() => {
+                          const effectiveStatus = getEffectiveStatus(objective.status, objective.id, false);
+                          return effectiveStatus === 'On Track' ? '#22C55E' : effectiveStatus === 'At Risk' ? '#F59E0B' : effectiveStatus === 'No status' ? '#9CA3AF' : '#EF4444';
+                        })()} 
                         strokeWidth="8" 
                         strokeDasharray="283" 
                         strokeDashoffset={283 - (283 * calculatedProgress) / 100} 
@@ -275,10 +311,10 @@ export const ObjectiveDetail: React.FC<ObjectiveDetailProps> = ({ objectiveId, o
                 const krHabits = habits.filter(h => h.linkedKeyResultId === kr.id);
                 return (
                     <div key={kr.id} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 group hover:shadow-md hover:border-primary/20">
-                      <div onClick={() => onEdit('keyResult', kr.id, objectiveId)} className="cursor-pointer active:scale-[0.98] transition-transform">
+                      <div onClick={() => setSelectedKeyResultId(kr.id)} className="cursor-pointer active:scale-[0.98] transition-transform">
                         <div className="flex justify-between items-start mb-2">
                             <h4 className="text-base font-semibold text-text-main leading-snug flex-1 mr-2 group-hover:text-primary transition-colors">{kr.title}</h4>
-                            <span className={`shrink-0 text-[10px] font-bold uppercase px-2 py-0.5 rounded ${getStatusBadge(kr.status)}`}>{kr.status}</span>
+                            <span className={`shrink-0 text-[10px] font-bold uppercase px-2 py-0.5 rounded ${getStatusBadge(getEffectiveStatus(kr.status, kr.id, true))}`}>{getEffectiveStatus(kr.status, kr.id, true)}</span>
                         </div>
                         <div className="flex items-end justify-between mb-2">
                             <div className="flex-1">
@@ -300,19 +336,18 @@ export const ObjectiveDetail: React.FC<ObjectiveDetailProps> = ({ objectiveId, o
                             <span className="text-xs font-bold text-text-main">{percent}%</span>
                         </div>
                         <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
-                            <div className={`h-full rounded-full ${getStatusColor(kr.status)}`} style={{width: `${percent}%`}}></div>
+                            <div className={`h-full rounded-full ${getStatusColor(getEffectiveStatus(kr.status, kr.id, true))}`} style={{width: `${percent}%`}}></div>
                         </div>
-                        <div className="mt-2 flex justify-between items-center">
+                        <div className="mt-2 flex justify-end items-center">
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setSelectedKeyResultId(kr.id);
+                                onEdit('keyResult', kr.id, objectiveId);
                               }}
-                              className="text-[10px] text-primary font-bold uppercase tracking-wider hover:underline transition-opacity"
+                              className="text-[10px] text-text-tertiary font-bold uppercase tracking-wider opacity-0 group-hover:opacity-100 hover:text-primary transition-opacity"
                             >
-                              Status Updates →
+                              Edit →
                             </button>
-                            <span className="text-[10px] text-primary font-bold uppercase tracking-wider opacity-0 group-hover:opacity-100 transition-opacity">Edit →</span>
                         </div>
                       </div>
                       
@@ -831,12 +866,8 @@ export const ObjectiveDetail: React.FC<ObjectiveDetailProps> = ({ objectiveId, o
                                                             </p>
                                                         )}
                                                     </div>
-                                                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${
-                                                        kr.status === 'On Track' ? 'bg-green-100 text-green-700' :
-                                                        kr.status === 'At Risk' ? 'bg-amber-100 text-amber-700' :
-                                                        'bg-red-100 text-red-700'
-                                                    }`}>
-                                                        {kr.status}
+                                                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${getStatusBadge(getEffectiveStatus(kr.status, kr.id, true))}`}>
+                                                        {getEffectiveStatus(kr.status, kr.id, true)}
                                                     </span>
                                                 </div>
                                             </button>

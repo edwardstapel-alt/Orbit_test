@@ -36,7 +36,6 @@ export const FirebaseAuth: React.FC<FirebaseAuthProps> = ({ onBack, onAuthentica
   useEffect(() => {
     const checkAuth = () => {
       const user = getCurrentUser();
-      console.log('🔍 Checking auth status:', user ? `Logged in as ${user.email}` : 'Not logged in');
       if (user) {
         setIsAuthenticated(true);
         // Don't call onAuthenticated here - user is already logged in, just viewing the page
@@ -50,7 +49,6 @@ export const FirebaseAuth: React.FC<FirebaseAuthProps> = ({ onBack, onAuthentica
 
     // Watch for auth state changes (e.g., login from another device)
     const unsubscribe = onAuthStateChange((user) => {
-      console.log('🔄 Auth state changed:', user ? `Logged in as ${user.email}` : 'Logged out');
       if (user) {
         setIsAuthenticated(true);
       } else {
@@ -70,27 +68,21 @@ export const FirebaseAuth: React.FC<FirebaseAuthProps> = ({ onBack, onAuthentica
     try {
       if (isLogin) {
         // Login
-        console.log('🔐 Attempting email/password login...');
         const result = await loginUser(email, password);
         if (result.success && result.user) {
-          console.log('✅ Login successful:', result.user.email);
           setSuccess('Successfully logged in!');
           setIsAuthenticated(true);
           
           // Sync data from Firebase
           try {
-            console.log('🔄 Starting sync after login...');
             const syncResult = await syncAllFromFirebase();
             if (syncResult.success) {
-              console.log('✅ Sync successful after login');
               setSuccess('Logged in and data synced!');
             } else {
-              console.warn('⚠️ Sync failed after login:', syncResult.error);
-              setSuccess('Logged in! (Sync had issues - check console)');
+              setSuccess('Logged in! (Sync had issues)');
             }
           } catch (syncError: any) {
-            console.error('❌ Sync error after login:', syncError);
-            setSuccess('Logged in! (Sync error - check console)');
+            setSuccess('Logged in! (Sync error occurred)');
           }
           
           if (onAuthenticated) {

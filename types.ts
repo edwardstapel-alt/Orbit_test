@@ -28,6 +28,7 @@ export enum View {
   HABIT_ANALYTICS = 'HABIT_ANALYTICS', // Habit Analytics Dashboard
   HABIT_TEMPLATES = 'HABIT_TEMPLATES', // Habit Template Library
   TEMPLATE_LIBRARY = 'TEMPLATE_LIBRARY', // Template Library (Tasks & Habits)
+  GOAL_PLANS = 'GOAL_PLANS', // Goal Plans / Objective Templates
   HABITS = 'HABITS' // Habits Overview Page
 }
 
@@ -219,7 +220,42 @@ export interface CompletionRecord {
   timeOfDay?: string; // HH:mm (optional, for analytics)
 }
 
+// Action Plan Task
+export interface ActionPlanTask {
+  id: string;
+  title: string;
+  scheduledDate?: string; // YYYY-MM-DD
+  week?: number; // Which week this task belongs to
+  order?: number; // Order within the week
+}
+
+// Action Plan Week
+export interface ActionPlanWeek {
+  weekNumber: number;
+  title: string;
+  tasks: ActionPlanTask[];
+}
+
 // Habit Template (Fase 4)
+export interface ObjectiveTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  icon: string;
+  category: string; // Life Area category (e.g., "Work & Career", "Sport & Health")
+  objectiveData: Partial<Objective>; // Alle objective velden behalve id
+  actionPlan?: {
+    weeks: ActionPlanWeek[];
+    duration?: number; // Duration in weeks
+  };
+  usageCount: number;
+  lastUsed?: string; // ISO timestamp
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+  tags?: string[]; // For search/filtering
+}
+
 export interface HabitTemplate {
   id: string;
   name: string;
@@ -311,7 +347,7 @@ export interface Objective {
   description?: string;
   owner: string;
   ownerImage?: string;
-  status: 'On Track' | 'At Risk' | 'Off Track';
+  status: 'On Track' | 'At Risk' | 'Off Track' | 'No status';
   category: 'personal' | 'professional';
   progress: number; // 0-100 (can be auto-calculated)
   // Goal-First fields
@@ -332,10 +368,11 @@ export interface KeyResult {
   title: string;
   current: number;
   target: number;
-  measurementType: 'percentage' | 'number' | 'currency'; // Type of measurement
+  measurementType: 'percentage' | 'number' | 'currency' | 'weight' | 'distance' | 'time' | 'height' | 'pages' | 'chapters' | 'custom'; // Type of measurement
   currency?: string; // Currency code (e.g., 'EUR', 'USD') - only for currency type
+  customUnit?: string; // Custom unit label (e.g., 'reps', 'sets') - only for custom type
   decimals: number; // Number of decimal places (0-2)
-  status: 'On Track' | 'At Risk' | 'Off Track';
+  status: 'On Track' | 'At Risk' | 'Off Track' | 'No status';
   owner?: string; // Optional override
   ownerImage?: string; // Owner profile image
   // Timeline fields - VERPLICHT
@@ -351,7 +388,7 @@ export interface StatusUpdate {
   keyResultId: string; // Foreign key naar KeyResult
   date: string; // YYYY-MM-DD - datum van de update
   currentValue: number; // Nieuwe waarde op deze datum
-  status: 'On Track' | 'At Risk' | 'Off Track'; // Status op dit moment
+  status: 'On Track' | 'At Risk' | 'Off Track' | 'No status'; // Status op dit moment
   description: string; // Geschreven uitleg van voortgang/blokkades
   author: string; // Wie heeft de update gemaakt
   authorImage?: string; // Profiel foto van auteur
@@ -474,7 +511,8 @@ export interface DataContextType {
   places: Place[];
   teamMembers: TeamMember[];
   accentColor: string;
-  darkMode: boolean;
+  darkMode: boolean; // Deprecated - use theme instead
+  theme: 'light' | 'dark' | 'black';
   showCategory: boolean; // Show personal/professional category split
   // Life Planner
   lifeAreas: LifeArea[];
@@ -564,7 +602,8 @@ export interface DataContextType {
   getLifeAreaByObjective: (objectiveId: string) => LifeArea | undefined;
 
   setAccentColor: (color: string) => void;
-  setDarkMode: (enabled: boolean) => void;
+  setDarkMode: (enabled: boolean) => void; // Deprecated - use setTheme instead
+  setTheme: (theme: 'light' | 'dark' | 'black') => void;
   setShowCategory: (enabled: boolean) => void;
 
   // Notifications & Reminders
@@ -588,6 +627,10 @@ export interface DataContextType {
   updateTaskTemplate: (template: TaskTemplate) => void;
   deleteTaskTemplate: (id: string) => void;
   createTaskFromTemplate: (templateId: string) => Task | null;
+  addObjectiveTemplate: (template: ObjectiveTemplate) => void;
+  updateObjectiveTemplate: (template: ObjectiveTemplate) => void;
+  deleteObjectiveTemplate: (id: string) => void;
+  createObjectiveFromTemplate: (templateId: string, lifeAreaId?: string) => Objective | null;
   
   addQuickAction: (action: QuickAction) => void;
   updateQuickAction: (action: QuickAction) => void;

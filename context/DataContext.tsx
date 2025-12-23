@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Task, Habit, Friend, Objective, KeyResult, Place, TeamMember, DataContextType, UserProfile, LifeArea, Vision, TimeSlot, DayPart, StatusUpdate, Conflict, ConflictResolution, ConflictResolutionConfig, Reminder, Notification, NotificationSettings, EntityType, TaskTemplate, QuickAction, View } from '../types';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { Task, Habit, Friend, Objective, KeyResult, Place, TeamMember, DataContextType, UserProfile, LifeArea, Vision, TimeSlot, DayPart, StatusUpdate, Conflict, ConflictResolution, ConflictResolutionConfig, Reminder, Notification, NotificationSettings, EntityType, TaskTemplate, ObjectiveTemplate, QuickAction, View } from '../types';
 import { syncService, DataContextCallbacks } from '../utils/syncService';
 import { importGoogleTasks, detectDuplicateAppTasks, mergeAppTasks, getAccessToken } from '../utils/googleSync';
 import { recordHabitCompletion, recordHabitMiss } from '../utils/habitHistory';
@@ -8,8 +8,9 @@ import { syncEntityToFirebase, syncAllFromFirebase, syncAllToFirebase, watchFire
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../utils/firebase';
 import { notificationScheduler } from '../utils/notificationScheduler';
-import { getTaskTemplates, createTaskFromTemplate as createTaskFromTemplateUtil, addCustomTaskTemplate, updateTaskTemplate as updateTaskTemplateUtil, deleteTaskTemplate as deleteTaskTemplateUtil, updateTemplateUsage as updateTaskTemplateUsage } from '../utils/taskTemplates';
-import { getQuickActions, addCustomQuickAction, updateQuickAction as updateQuickActionUtil, deleteQuickAction as deleteQuickActionUtil, updateActionUsage } from '../utils/quickActions';
+import { getTaskTemplates, createTaskFromTemplate as createTaskFromTemplateUtil, addCustomTaskTemplate, updateTaskTemplate as updateTaskTemplateUtil, deleteTaskTemplate as deleteTaskTemplateUtil, updateTemplateUsage as updateTaskTemplateUsage, defaultTaskTemplates } from '../utils/taskTemplates';
+import { getObjectiveTemplates, createObjectiveFromTemplate as createObjectiveFromTemplateUtil, addCustomObjectiveTemplate, updateObjectiveTemplate as updateObjectiveTemplateUtil, deleteObjectiveTemplate as deleteObjectiveTemplateUtil, updateTemplateUsage as updateObjectiveTemplateUsage, defaultObjectiveTemplates } from '../utils/objectiveTemplates';
+import { getQuickActions, addCustomQuickAction, updateQuickAction as updateQuickActionUtil, deleteQuickAction as deleteQuickActionUtil, updateActionUsage, defaultQuickActions } from '../utils/quickActions';
 import { recurringEngine } from '../utils/recurringEngine';
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -188,6 +189,16 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const saved = localStorage.getItem('orbit_darkMode');
     return saved ? JSON.parse(saved) : false;
   });
+  
+  // Theme state: 'light' | 'dark' | 'black'
+  const [theme, setTheme] = useState<'light' | 'dark' | 'black'>(() => {
+    const saved = localStorage.getItem('orbit_theme');
+    if (saved && (saved === 'light' || saved === 'dark' || saved === 'black')) return saved as 'light' | 'dark' | 'black';
+    // Migration: convert old darkMode boolean to theme
+    const oldDarkMode = localStorage.getItem('orbit_darkMode');
+    return oldDarkMode === 'true' ? 'dark' : 'light';
+  });
+  
   const [showCategory, setShowCategory] = useState<boolean>(() => {
     const saved = localStorage.getItem('orbit_showCategory');
     return saved ? JSON.parse(saved) : false; // Default: false (uitgeschakeld)
@@ -240,8 +251,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   );
   
   // Task Templates & Quick Actions
-  const [taskTemplates, setTaskTemplates] = useState<TaskTemplate[]>(() => loadData('orbit_taskTemplates', []));
-  const [quickActions, setQuickActions] = useState<QuickAction[]>(() => loadData('orbit_quickActions', []));
+  const [taskTemplates, setTaskTemplates] = useState<TaskTemplate[]>(() => loadData('orbit_taskTemplates', defaultTaskTemplates));
+  const [objectiveTemplates, setObjectiveTemplates] = useState<ObjectiveTemplate[]>(() => loadData('orbit_objectiveTemplates', defaultObjectiveTemplates));
+  const [quickActions, setQuickActions] = useState<QuickAction[]>(() => loadData('orbit_quickActions', defaultQuickActions));
   
   // Track deleted Google Task IDs to prevent re-import
   const [deletedGoogleTaskIds, setDeletedGoogleTaskIds] = useState<string[]>(() => loadData('orbit_deletedGoogleTaskIds', []));
@@ -257,8 +269,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return loaded;
   });
 
-  // Helper function to reduce saturation by 30%
-  const reduceSaturation = (color: string): string => {
+  // Helper function to reduce saturation by 50%
+  const reduceSaturation = useCallback((color: string): string => {
     // Convert hex to RGB
     const hex = color.replace('#', '');
     const r = parseInt(hex.substring(0, 2), 16) / 255;
@@ -280,8 +292,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     }
 
-    // Reduce saturation by 30%
-    s = Math.max(0, s * 0.7);
+    // Reduce saturation by 50%
+    s = Math.max(0, s * 0.5);
 
     // Convert HSL back to RGB
     const hue2rgb = (p: number, q: number, t: number) => {
@@ -311,7 +323,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     return `#${toHex(newR)}${toHex(newG)}${toHex(newB)}`;
-  };
+  }, []);
 
   // --- Persistence Effects ---
   useEffect(() => { localStorage.setItem('orbit_profile', JSON.stringify(userProfile)); }, [userProfile]);
@@ -342,6 +354,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   useEffect(() => { localStorage.setItem('orbit_notifications', JSON.stringify(notifications)); }, [notifications]);
   useEffect(() => { localStorage.setItem('orbit_notificationSettings', JSON.stringify(notificationSettings)); }, [notificationSettings]);
   useEffect(() => { localStorage.setItem('orbit_taskTemplates', JSON.stringify(taskTemplates)); }, [taskTemplates]);
+  useEffect(() => { localStorage.setItem('orbit_objectiveTemplates', JSON.stringify(objectiveTemplates)); }, [objectiveTemplates]);
   useEffect(() => { localStorage.setItem('orbit_quickActions', JSON.stringify(quickActions)); }, [quickActions]);
   useEffect(() => { localStorage.setItem('orbit_deletedGoogleTaskIds', JSON.stringify(deletedGoogleTaskIds)); }, [deletedGoogleTaskIds]);
   useEffect(() => { localStorage.setItem('orbit_deletedTaskIds', JSON.stringify(deletedTaskIds)); }, [deletedTaskIds]);
@@ -389,6 +402,22 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       );
     }
   }, [deletedTaskIds]);
+  // Theme management
+  useEffect(() => {
+    localStorage.setItem('orbit_theme', theme);
+    // Update body classes
+    document.documentElement.classList.remove('dark', 'black');
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else if (theme === 'black') {
+      document.documentElement.classList.add('black');
+    }
+    // Update primary color - reduce saturation for dark/black themes
+    const primaryColor = (theme === 'dark' || theme === 'black') ? reduceSaturation(accentColor) : accentColor;
+    document.documentElement.style.setProperty('--color-primary', primaryColor);
+  }, [theme, accentColor, reduceSaturation]);
+
+  // Legacy darkMode support (for backward compatibility)
   useEffect(() => { 
       localStorage.setItem('orbit_accent', JSON.stringify(accentColor)); 
       const primaryColor = darkMode ? reduceSaturation(accentColor) : accentColor;
@@ -1365,6 +1394,23 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         'CHF': 'CHF'
       };
       return `${symbols[currency] || currency} ${formatted}`;
+    } else if (measurementType === 'weight') {
+      return `${formatted} kg`;
+    } else if (measurementType === 'distance') {
+      return `${formatted} km`;
+    } else if (measurementType === 'time') {
+      // Format as hours (e.g., 1000 hours)
+      return `${formatted} hours`;
+    } else if (measurementType === 'height') {
+      // Format as meters (e.g., 1.75m)
+      return `${formatted} m`;
+    } else if (measurementType === 'pages') {
+      return `${formatted} pages`;
+    } else if (measurementType === 'chapters') {
+      return `${formatted} chapters`;
+    } else if (measurementType === 'custom') {
+      const unit = kr.customUnit || '';
+      return unit ? `${formatted} ${unit}` : formatted;
     }
     
     return formatted;
@@ -1608,6 +1654,52 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return task;
   };
 
+  // --- Objective Templates Functions ---
+  const addObjectiveTemplate = (template: ObjectiveTemplate) => {
+    setObjectiveTemplates([...objectiveTemplates, template]);
+    // Sync to Firebase
+    if (isAuthenticated()) {
+      syncEntityToFirebase('objectiveTemplates', template, template.id).catch(err => 
+        console.error('Error syncing objective template to Firebase:', err)
+      );
+    }
+  };
+
+  const updateObjectiveTemplate = (template: ObjectiveTemplate) => {
+    const updated = updateObjectiveTemplateUtil(template, objectiveTemplates);
+    setObjectiveTemplates(updated);
+    // Sync to Firebase
+    if (isAuthenticated()) {
+      syncEntityToFirebase('objectiveTemplates', template, template.id).catch(err => 
+        console.error('Error syncing objective template to Firebase:', err)
+      );
+    }
+  };
+
+  const deleteObjectiveTemplate = (id: string) => {
+    setObjectiveTemplates(deleteObjectiveTemplateUtil(id, objectiveTemplates));
+    // Sync delete to Firebase
+    if (isAuthenticated()) {
+      deleteEntityFromFirebase('objectiveTemplates', id).catch(err => 
+        console.error('Error deleting objective template from Firebase:', err)
+      );
+    }
+  };
+
+  const createObjectiveFromTemplate = (templateId: string, lifeAreaId?: string): Objective | null => {
+    const allTemplates = getObjectiveTemplates(objectiveTemplates);
+    const template = allTemplates.find(t => t.id === templateId);
+    if (!template) return null;
+
+    const objective = createObjectiveFromTemplateUtil(template, lifeAreaId);
+    addObjective(objective);
+    
+    // Update template usage
+    setObjectiveTemplates(updateObjectiveTemplateUsage(templateId, objectiveTemplates));
+    
+    return objective;
+  };
+
   // --- Quick Actions Functions ---
   const addQuickAction = (action: QuickAction) => {
     setQuickActions([...quickActions, action]);
@@ -1729,10 +1821,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   return (
     <DataContext.Provider value={{
-      userProfile, tasks, habits, friends, objectives, keyResults, places, teamMembers, accentColor, darkMode, showCategory,
+      userProfile, tasks, habits, friends, objectives, keyResults, places, teamMembers, accentColor, darkMode, theme, showCategory,
       lifeAreas, visions, timeSlots, dayParts, statusUpdates,
       reminders, notifications, notificationSettings,
-      taskTemplates, quickActions,
+      taskTemplates, objectiveTemplates, quickActions,
       deletedGoogleTaskIds, deletedTaskIds,
       updateUserProfile,
       addTask, updateTask, deleteTask, deleteCompletedTasks,
@@ -1752,7 +1844,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       getTasksByObjective, getTasksByKeyResult, getHabitsByObjective, getHabitsByKeyResult,
       getHabitsByLifeArea, getKeyResultsByObjective, getTimeSlotsByObjective, getTimeSlotsByLifeArea,
       getObjectivesByKeyResult, getLifeAreaByObjective,
-      setAccentColor, setDarkMode, setShowCategory,
+      setAccentColor, setDarkMode, setTheme, setShowCategory,
       clearAllData, restoreExampleData,
       // Notifications & Reminders
       addReminder, updateReminder, deleteReminder, getRemindersByEntity, getUpcomingReminders,
@@ -1760,6 +1852,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       updateNotificationSettings,
       // Task Templates & Quick Actions
       addTaskTemplate, updateTaskTemplate, deleteTaskTemplate, createTaskFromTemplate,
+      addObjectiveTemplate, updateObjectiveTemplate, deleteObjectiveTemplate, createObjectiveFromTemplate,
       addQuickAction, updateQuickAction, deleteQuickAction, executeQuickAction,
       // Sync service functions
       getSyncQueueStatus: () => syncService.getQueueStatus(),

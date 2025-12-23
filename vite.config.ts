@@ -14,7 +14,10 @@ export default defineConfig(({ mode }) => {
         react(),
         VitePWA({
           registerType: 'autoUpdate',
-          includeAssets: ['favicon.ico', 'icon-192.png', 'icon-512.png'],
+          includeAssets: ['favicon.ico', 'vite.svg'],
+          devOptions: {
+            enabled: false, // Disable PWA in development to avoid service worker issues
+          },
           manifest: {
             name: 'Orbit Dashboard',
             short_name: 'Orbit',
@@ -24,20 +27,7 @@ export default defineConfig(({ mode }) => {
             display: 'standalone',
             orientation: 'portrait',
             start_url: '/',
-            icons: [
-              {
-                src: '/icon-192.png',
-                sizes: '192x192',
-                type: 'image/png',
-                purpose: 'any maskable'
-              },
-              {
-                src: '/icon-512.png',
-                sizes: '512x512',
-                type: 'image/png',
-                purpose: 'any maskable'
-              }
-            ]
+            icons: []
           },
           workbox: {
             globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],

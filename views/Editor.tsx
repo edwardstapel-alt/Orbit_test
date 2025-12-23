@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
-import { EntityType, Task, Habit, Friend, Objective, KeyResult, Place, LifeArea, Vision, TimeSlot, View, Reminder } from '../types';
+import { EntityType, Task, Habit, Friend, Objective, KeyResult, Place, LifeArea, Vision, TimeSlot, View } from '../types';
 import { QuickLinkSelector } from '../components/QuickLinkSelector';
 import { ReminderEditor } from '../components/ReminderEditor';
+import { HabitScheduleSelector } from '../components/HabitScheduleSelector';
 import { getAllTemplates, createHabitFromTemplate } from '../utils/habitTemplates';
 import { getTaskTemplates, createTaskFromTemplate as createTaskFromTemplateUtil } from '../utils/taskTemplates';
+import { getObjectiveTemplates, getObjectiveTemplatesByCategory, createObjectiveFromTemplate as createObjectiveFromTemplateUtil } from '../utils/objectiveTemplates';
 
 interface EditorProps {
   type: EntityType;
@@ -12,19 +14,68 @@ interface EditorProps {
   parentId?: string; // For creating child Key Results
   contextObjectiveId?: string; // For linking habits to objectives
   contextLifeAreaId?: string; // For linking habits to life areas
+  fromTemplate?: boolean; // For loading template data when creating from template
   onClose: () => void;
   onNavigate?: (view: View, objectiveId?: string, lifeAreaId?: string) => void; // For navigation after save
   onEdit?: (type: EntityType, id?: string, parentId?: string) => void; // For creating related items
 }
 
-export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextObjectiveId, contextLifeAreaId, onClose, onNavigate, onEdit }) => {
+export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextObjectiveId, contextLifeAreaId, fromTemplate, onClose, onNavigate, onEdit }) => {
   const data = useData();
+  
+  // Helper to check if key result has status updates
+  const hasKeyResultStatusUpdates = (krId: string) => {
+    const updates = data.getStatusUpdatesByKeyResult(krId);
+    return updates.length > 0;
+  };
+
+  // Helper to check if objective has any status updates (via its key results)
+  const hasObjectiveStatusUpdates = (objId: string) => {
+    const linkedKRs = data.keyResults.filter(kr => kr.objectiveId === objId);
+    return linkedKRs.some(kr => {
+      const updates = data.getStatusUpdatesByKeyResult(kr.id);
+      return updates.length > 0;
+    });
+  };
+
+  // Get effective status (No status if no updates exist)
+  const getEffectiveStatus = (status: string, entityId: string, isKeyResult: boolean = false) => {
+    const hasUpdates = isKeyResult 
+      ? hasKeyResultStatusUpdates(entityId)
+      : hasObjectiveStatusUpdates(entityId);
+    return hasUpdates ? status : 'No status';
+  };
+
+  const getStatusBadge = (status: string) => {
+    if (status === 'On Track') return 'bg-green-100 text-green-700';
+    if (status === 'At Risk') return 'bg-amber-100 text-amber-700';
+    if (status === 'No status') return 'bg-gray-100 text-gray-600';
+    return 'bg-red-100 text-red-700';
+  };
+
+  const getStatusColor = (status: string) => {
+    if (status === 'On Track') return 'bg-green-400';
+    if (status === 'At Risk') return 'bg-amber-400';
+    if (status === 'No status') return 'bg-gray-400';
+    return 'bg-red-400';
+  };
   const [formData, setFormData] = useState<any>({});
   const [showOwnerModal, setShowOwnerModal] = useState(false);
   const [showLifeAreaModal, setShowLifeAreaModal] = useState(false);
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
+  const [showObjectiveTemplateSelector, setShowObjectiveTemplateSelector] = useState(false);
+  const [showLinkKeyResultModal, setShowLinkKeyResultModal] = useState(false);
   const [showReminderEditor, setShowReminderEditor] = useState(false);
   const [showRecurringOptions, setShowRecurringOptions] = useState(false);
+  const [showScheduleSelector, setShowScheduleSelector] = useState(false);
+  const [generateAsTasks, setGenerateAsTasks] = useState(false);
+  const [habitSchedule, setHabitSchedule] = useState<{
+    frequency: 'daily' | 'weekly' | 'monthly';
+    daysOfWeek?: number[];
+    interval?: number;
+  } | null>(null);
+  const [templateKeyResults, setTemplateKeyResults] = useState<Partial<KeyResult>[]>([]);
+  const [loadedTemplateId, setLoadedTemplateId] = useState<string | null>(null);
 
   // Helper function to determine dayPart from time
   const getDayPartFromTime = (time: string, dayParts: any[]): string => {
@@ -57,6 +108,70 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
     return ''; // Default to empty if no match
   };
 
+  // Generate tasks from habit schedule
+  const generateTasksFromHabit = (habit: Habit, schedule: {
+    frequency: 'daily' | 'weekly' | 'monthly';
+    daysOfWeek?: number[];
+    interval?: number;
+  }) => {
+    const tasks: Task[] = [];
+    const today = new Date();
+    const endDate = new Date(today);
+    endDate.setDate(endDate.getDate() + 30); // Generate for next 30 days
+    
+    let currentDate = new Date(today);
+    
+    while (currentDate <= endDate) {
+      let shouldCreate = false;
+      
+      if (schedule.frequency === 'daily') {
+        shouldCreate = true;
+      } else if (schedule.frequency === 'weekly') {
+        const dayOfWeek = currentDate.getDay();
+        // Convert Sunday (0) to 0, Monday (1) to 1, etc.
+        const dayIndex = dayOfWeek === 0 ? 0 : dayOfWeek;
+        if (schedule.daysOfWeek && schedule.daysOfWeek.includes(dayIndex)) {
+          shouldCreate = true;
+        }
+      } else if (schedule.frequency === 'monthly') {
+        // Monthly: same day of month
+        const dayOfMonth = currentDate.getDate();
+        if (dayOfMonth === today.getDate()) {
+          shouldCreate = true;
+        }
+      }
+      
+      if (shouldCreate) {
+        const task: Task = {
+          id: `${habit.id}-task-${currentDate.toISOString().split('T')[0]}`,
+          title: habit.name,
+          tag: habit.category || 'Habit',
+          completed: false,
+          scheduledDate: currentDate.toISOString().split('T')[0],
+          scheduledTime: habit.recurring?.reminderTime || undefined,
+          objectiveId: habit.objectiveId,
+          lifeAreaId: habit.lifeAreaId,
+          keyResultId: habit.linkedKeyResultId,
+          recurring: {
+            pattern: schedule.frequency === 'daily' ? 'daily' : schedule.frequency === 'weekly' ? 'weekly' : 'monthly',
+            daysOfWeek: schedule.daysOfWeek,
+            interval: schedule.interval || 1,
+            parentTaskId: habit.id
+          }
+        };
+        tasks.push(task);
+      }
+      
+      // Move to next day
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    
+    // Add all generated tasks
+    tasks.forEach(task => {
+      data.addTask(task);
+    });
+  };
+
   // Get primary owner (user with role 'You')
   const getPrimaryOwner = () => {
     const primaryOwner = data.teamMembers.find(m => m.role === 'You');
@@ -74,11 +189,35 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
     };
   };
 
+  // Get single team member owner (if there's only 1 team member, use that one)
+  const getSingleTeamMemberOwner = () => {
+    if (data.teamMembers.length === 1) {
+      const singleMember = data.teamMembers[0];
+      return { name: singleMember.name, image: singleMember.image };
+    }
+    return null;
+  };
+
   useEffect(() => {
     if (editId) {
       let existingItem;
       if (type === 'task') existingItem = data.tasks.find(t => t.id === editId);
-      if (type === 'habit') existingItem = data.habits.find(h => h.id === editId);
+      if (type === 'habit') {
+        existingItem = data.habits.find(h => h.id === editId);
+        if (existingItem) {
+          setFormData({ ...existingItem });
+          // Load schedule if exists
+          if (existingItem.recurring) {
+            setHabitSchedule({
+              frequency: existingItem.recurring.frequency,
+              daysOfWeek: existingItem.recurring.daysOfWeek,
+              interval: 1
+            });
+          } else {
+            setHabitSchedule(null);
+          }
+        }
+      }
       if (type === 'friend') existingItem = data.friends.find(f => f.id === editId);
       if (type === 'objective') existingItem = data.objectives.find(o => o.id === editId);
       if (type === 'keyResult') {
@@ -146,6 +285,8 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
             weeklyProgress: [false, false, false, false, false, false, false],
             createdAt: new Date().toISOString()
           });
+          setHabitSchedule(null);
+          setGenerateAsTasks(false);
         }
         if (type === 'friend') setFormData({ name: '', role: 'Friend', roleType: 'friend', location: '' });
         if (type === 'timeSlot') {
@@ -163,22 +304,89 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
         }
         if (type === 'objective') {
           const storedLifeAreaId = localStorage.getItem('orbit_newObjective_lifeAreaId');
-          const defaultLifeAreaId = storedLifeAreaId || (data.lifeAreas.length > 0 ? data.lifeAreas[0].id : '');
+          const defaultLifeAreaId = storedLifeAreaId || contextLifeAreaId || (data.lifeAreas.length > 0 ? data.lifeAreas[0].id : '');
           if (storedLifeAreaId) localStorage.removeItem('orbit_newObjective_lifeAreaId');
-          const today = new Date();
-          const nextYear = new Date(today.getFullYear() + 1, today.getMonth(), today.getDate());
-          setFormData({ 
-            title: '', 
-            description: '', 
-            status: 'On Track', 
-            category: 'professional', 
-            owner: primaryOwner.name, 
-            ownerImage: primaryOwner.image,
-            startDate: today.toISOString().split('T')[0], 
-            endDate: nextYear.toISOString().split('T')[0],
-            progress: 0,
-            lifeAreaId: defaultLifeAreaId
-          });
+          
+          const selectedTemplateId = localStorage.getItem('orbit_selectedTemplateId');
+          
+          // Load template if: we're creating new (not editing) AND (fromTemplate is true OR there's a selectedTemplateId)
+          // AND we haven't loaded a template yet (prevents double-loading in React Strict Mode)
+          if (!editId && !loadedTemplateId && (fromTemplate || selectedTemplateId)) {
+            const templateIdToLoad = selectedTemplateId;
+            if (templateIdToLoad) {
+              const allTemplates = getObjectiveTemplates(data.objectiveTemplates);
+              const template = allTemplates.find(t => t.id === templateIdToLoad);
+              if (template) {
+                const objectiveFromTemplate = createObjectiveFromTemplateUtil(template, defaultLifeAreaId);
+                setLoadedTemplateId(templateIdToLoad);
+                if (template.keyResults && template.keyResults.length > 0) {
+                  setTemplateKeyResults(template.keyResults);
+                } else {
+                  setTemplateKeyResults([]);
+                }
+                // Don't remove template ID here - it will be removed when saving or closing
+                // This prevents issues with React Strict Mode double-rendering
+                setFormData({ 
+                  ...objectiveFromTemplate,
+                  lifeAreaId: defaultLifeAreaId || objectiveFromTemplate.lifeAreaId
+                });
+              } else {
+                const today = new Date();
+                const nextYear = new Date(today.getFullYear() + 1, today.getMonth(), today.getDate());
+                setFormData({ 
+                  title: '', 
+                  description: '', 
+                  status: 'On Track', 
+                  category: 'professional', 
+                  owner: primaryOwner.name, 
+                  ownerImage: primaryOwner.image,
+                  startDate: today.toISOString().split('T')[0], 
+                  endDate: nextYear.toISOString().split('T')[0],
+                  progress: 0,
+                  lifeAreaId: defaultLifeAreaId
+                });
+                setTemplateKeyResults([]); // Reset if template not found
+                setLoadedTemplateId(null);
+                localStorage.removeItem('orbit_selectedTemplateId');
+              }
+            } else {
+              // fromTemplate is true but no templateId found - this shouldn't happen
+              const today = new Date();
+              const nextYear = new Date(today.getFullYear() + 1, today.getMonth(), today.getDate());
+              setFormData({ 
+                title: '', 
+                description: '', 
+                status: 'On Track', 
+                category: 'professional', 
+                owner: primaryOwner.name, 
+                ownerImage: primaryOwner.image,
+                startDate: today.toISOString().split('T')[0], 
+                endDate: nextYear.toISOString().split('T')[0],
+                progress: 0,
+                lifeAreaId: defaultLifeAreaId
+              });
+              setTemplateKeyResults([]);
+              setLoadedTemplateId(null);
+            }
+          } else {
+            // No template, use defaults
+            const today = new Date();
+            const nextYear = new Date(today.getFullYear() + 1, today.getMonth(), today.getDate());
+            setFormData({ 
+              title: '', 
+              description: '', 
+              status: 'On Track', 
+              category: 'professional', 
+              owner: primaryOwner.name, 
+              ownerImage: primaryOwner.image,
+              startDate: today.toISOString().split('T')[0], 
+              endDate: nextYear.toISOString().split('T')[0],
+              progress: 0,
+              lifeAreaId: defaultLifeAreaId
+            });
+            setTemplateKeyResults([]); // Reset if no template
+            if (selectedTemplateId) localStorage.removeItem('orbit_selectedTemplateId');
+          }
         }
         if (type === 'keyResult') {
           const today = new Date();
@@ -224,9 +432,26 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
             statement: '',
             images: []
           });
+          
+          // If fromTemplate is true, show template selector immediately
+          if (fromTemplate && !editId) {
+            setTimeout(() => setShowObjectiveTemplateSelector(true), 100);
+          }
         }
     }
-  }, [editId, type, parentId, data.teamMembers, data.userProfile]);
+  }, [editId, type, parentId, fromTemplate, data.teamMembers, data.userProfile, data.objectiveTemplates, contextLifeAreaId]);
+
+  // Cleanup: remove template ID when Editor closes (only if not saved)
+  useEffect(() => {
+    return () => {
+      // Clean up template ID when component unmounts (Editor closes without saving)
+      // Only remove if we haven't saved yet (loadedTemplateId is still set)
+      const selectedTemplateId = localStorage.getItem('orbit_selectedTemplateId');
+      if (selectedTemplateId && loadedTemplateId) {
+        localStorage.removeItem('orbit_selectedTemplateId');
+      }
+    };
+  }, [loadedTemplateId]);
 
   const handleChange = (field: string, value: any) => {
     setFormData((prev: any) => ({ ...prev, [field]: value }));
@@ -248,10 +473,97 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
     if (type === 'timeSlot') editId ? data.updateTimeSlot(newItem as TimeSlot) : data.addTimeSlot(newItem as TimeSlot);
     
     if (type === 'objective') {
-      editId ? data.updateObjective({ ...newItem, ownerImage: 'https://picsum.photos/id/64/200/200' } as Objective) : data.addObjective({ ...newItem, ownerImage: 'https://picsum.photos/id/64/200/200' } as Objective);
+      // If there's only 1 team member, automatically set them as owner
+      const singleOwner = getSingleTeamMemberOwner();
+      if (singleOwner) {
+        newItem.owner = singleOwner.name;
+        newItem.ownerImage = singleOwner.image;
+      }
       
-      // If creating a new Objective, navigate to detail view where user can add key results
-      if (!editId && onNavigate) {
+      // Remove undefined values to prevent Firebase errors
+      const cleanObjective = { ...newItem, ownerImage: newItem.ownerImage || 'https://picsum.photos/id/64/200/200' };
+      // Remove undefined fields (Firebase doesn't accept undefined)
+      Object.keys(cleanObjective).forEach(key => {
+        if (cleanObjective[key] === undefined) {
+          delete cleanObjective[key];
+        }
+      });
+      editId ? data.updateObjective(cleanObjective as Objective) : data.addObjective(cleanObjective as Objective);
+      
+      // If creating from template, add key results and tasks
+      if (!editId && loadedTemplateId) {
+        const allTemplates = getObjectiveTemplates(data.objectiveTemplates);
+        const template = allTemplates.find(t => t.id === loadedTemplateId);
+        const newObjectiveId = newItem.id;
+        
+        // Create key results from templateKeyResults state (user may have edited them)
+        if (templateKeyResults && templateKeyResults.length > 0) {
+          templateKeyResults.forEach((krTemplate, index) => {
+            if (!krTemplate.title || krTemplate.title.trim() === '') {
+              return;
+            }
+            // If there's only 1 team member, automatically set them as owner
+            const singleOwner = getSingleTeamMemberOwner();
+            const keyResultOwner = singleOwner 
+              ? singleOwner.name 
+              : (krTemplate.owner || newItem.owner || '');
+            const keyResultOwnerImage = singleOwner 
+              ? singleOwner.image 
+              : (krTemplate.ownerImage || newItem.ownerImage || 'https://picsum.photos/id/64/200/200');
+            
+            const keyResult: KeyResult = {
+              id: `${newObjectiveId}-kr-${index}`,
+              title: krTemplate.title || `Key Result ${index + 1}`,
+              objectiveId: newObjectiveId,
+              current: krTemplate.current || 0,
+              target: krTemplate.target || 100,
+              measurementType: krTemplate.measurementType || 'percentage',
+              currency: krTemplate.currency || 'EUR',
+              decimals: krTemplate.decimals !== undefined ? krTemplate.decimals : (krTemplate.measurementType === 'currency' ? 2 : 0),
+              status: krTemplate.status || 'On Track',
+              startDate: krTemplate.startDate || newItem.startDate,
+              endDate: krTemplate.endDate || newItem.endDate,
+              owner: keyResultOwner,
+              ownerImage: keyResultOwnerImage,
+              // Only include customUnit if it has a value (Firebase doesn't accept undefined)
+              ...(krTemplate.customUnit ? { customUnit: krTemplate.customUnit } : {}),
+            };
+            data.addKeyResult(keyResult);
+          });
+        }
+        
+        // Create action plan tasks
+        if (template?.actionPlan?.weeks) {
+          template.actionPlan.weeks.forEach(week => {
+            week.tasks.forEach(task => {
+              const taskObj = {
+                id: `${newObjectiveId}-task-${task.id}`,
+                title: task.title,
+                tag: template.category,
+                completed: false,
+                priority: false,
+                scheduledDate: task.scheduledDate,
+                objectiveId: newObjectiveId,
+                lifeAreaId: newItem.lifeAreaId || '',
+              };
+              data.addTask(taskObj);
+            });
+          });
+        }
+        
+        setLoadedTemplateId(null);
+        setTemplateKeyResults([]); // Reset template key results after saving
+        localStorage.removeItem('orbit_selectedTemplateId'); // Clean up template ID after saving
+        
+        if (onNavigate) {
+          onClose();
+          setTimeout(() => {
+            onNavigate(View.OBJECTIVE_DETAIL, newObjectiveId);
+          }, 100);
+          return;
+        }
+      } else if (!editId && onNavigate) {
+        // If creating a new Objective (not from template), navigate to detail view where user can add key results
         const newObjectiveId = newItem.id;
         onClose();
         setTimeout(() => {
@@ -288,12 +600,19 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
         }
       }
       
-      // Als er geen owner is ingesteld, gebruik de owner van de parent objective
-      if (!krItem.owner && krItem.objectiveId) {
-        const parentObj = data.objectives.find(o => o.id === krItem.objectiveId);
-        if (parentObj) {
-          krItem.owner = parentObj.owner;
-          krItem.ownerImage = parentObj.ownerImage;
+      // If there's only 1 team member, automatically set them as owner
+      const singleOwner = getSingleTeamMemberOwner();
+      if (singleOwner) {
+        krItem.owner = singleOwner.name;
+        krItem.ownerImage = singleOwner.image;
+      } else {
+        // Als er geen owner is ingesteld, gebruik de owner van de parent objective
+        if (!krItem.owner && krItem.objectiveId) {
+          const parentObj = data.objectives.find(o => o.id === krItem.objectiveId);
+          if (parentObj) {
+            krItem.owner = parentObj.owner;
+            krItem.ownerImage = parentObj.ownerImage;
+          }
         }
       }
       editId ? data.updateKeyResult(krItem) : data.addKeyResult(krItem);
@@ -342,16 +661,76 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
   const handleDelete = () => {
     if (!editId) return;
     if (window.confirm("Are you sure you want to delete this item?")) {
-        if (type === 'task') data.deleteTask(editId);
-        if (type === 'habit') data.deleteHabit(editId);
-        if (type === 'friend') data.deleteFriend(editId);
-        if (type === 'objective') data.deleteObjective(editId);
-        if (type === 'keyResult') data.deleteKeyResult(editId);
-        if (type === 'place') data.deletePlace(editId);
-        if (type === 'lifeArea') data.deleteLifeArea(editId);
-        if (type === 'timeSlot') data.deleteTimeSlot(editId);
-        if (type === 'vision') data.deleteVision(editId);
+        // Get entity data before deleting for navigation
+        let lifeAreaId: string | undefined;
+        let objectiveId: string | undefined;
+        
+        if (type === 'objective') {
+          const objective = data.objectives.find(o => o.id === editId);
+          lifeAreaId = objective?.lifeAreaId;
+          data.deleteObjective(editId);
+        } else if (type === 'keyResult') {
+          const keyResult = data.keyResults.find(kr => kr.id === editId);
+          objectiveId = keyResult?.objectiveId;
+          // Get lifeAreaId from parent objective if available
+          if (objectiveId) {
+            const parentObjective = data.objectives.find(o => o.id === objectiveId);
+            lifeAreaId = parentObjective?.lifeAreaId;
+          }
+          data.deleteKeyResult(editId);
+        } else if (type === 'task') {
+          data.deleteTask(editId);
+        } else if (type === 'habit') {
+          data.deleteHabit(editId);
+        } else if (type === 'friend') {
+          data.deleteFriend(editId);
+        } else if (type === 'place') {
+          data.deletePlace(editId);
+        } else if (type === 'lifeArea') {
+          data.deleteLifeArea(editId);
+        } else if (type === 'timeSlot') {
+          data.deleteTimeSlot(editId);
+        } else if (type === 'vision') {
+          data.deleteVision(editId);
+        }
+        
         onClose();
+        
+        // Navigate to appropriate view after deletion
+        if (onNavigate) {
+          if (type === 'objective') {
+            // Navigate to Life Area detail if available, otherwise to Dashboard
+            if (lifeAreaId) {
+              setTimeout(() => {
+                onNavigate(View.LIFE_AREA_DETAIL, undefined, lifeAreaId);
+              }, 100);
+            } else {
+              setTimeout(() => {
+                onNavigate(View.DASHBOARD);
+              }, 100);
+            }
+          } else if (type === 'keyResult') {
+            // Navigate back to Objective Detail if available, otherwise to Dashboard
+            if (objectiveId) {
+              setTimeout(() => {
+                onNavigate(View.OBJECTIVE_DETAIL, objectiveId);
+              }, 100);
+            } else if (lifeAreaId) {
+              setTimeout(() => {
+                onNavigate(View.LIFE_AREA_DETAIL, undefined, lifeAreaId);
+              }, 100);
+            } else {
+              setTimeout(() => {
+                onNavigate(View.DASHBOARD);
+              }, 100);
+            }
+          } else {
+            // For other types, just navigate to Dashboard
+            setTimeout(() => {
+              onNavigate(View.DASHBOARD);
+            }, 100);
+          }
+        }
     }
   };
 
@@ -386,13 +765,13 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
         {/* TASK FORM */}
         {type === 'task' && (
             <div className="space-y-6">
-                <div className="bg-white p-2 rounded-2xl shadow-sm border border-gray-100">
+                <div className="bg-white p-2 rounded-2xl shadow-sm border border-slate-100">
                     <input type="text" className="w-full p-4 rounded-xl text-xl font-bold bg-transparent outline-none placeholder:text-gray-300" 
                         value={formData.title || ''} onChange={(e) => handleChange('title', e.target.value)} placeholder="What needs focus?" autoFocus />
                 </div>
                 
                 <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
                         <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Category</label>
                         <select className="w-full bg-transparent font-medium outline-none text-text-main" 
                             value={formData.tag || 'Work'} onChange={(e) => handleChange('tag', e.target.value)}>
@@ -404,14 +783,14 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                             <option value="Strategy">Strategy</option>
                         </select>
                     </div>
-                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
                          <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Timing</label>
                          <input type="text" className="w-full bg-transparent font-medium outline-none text-text-main" 
                         value={formData.time || ''} onChange={(e) => handleChange('time', e.target.value)} placeholder="e.g. 2:00 PM" />
                     </div>
                 </div>
 
-                <div className="flex items-center justify-between bg-white p-5 rounded-2xl border border-gray-100 shadow-sm cursor-pointer" onClick={() => handleChange('priority', !formData.priority)}>
+                <div className="flex items-center justify-between bg-white p-5 rounded-2xl border border-slate-100 shadow-sm cursor-pointer" onClick={() => handleChange('priority', !formData.priority)}>
                     <div className="flex items-center gap-3">
                          <div className={`size-8 rounded-full flex items-center justify-center ${formData.priority ? 'bg-red-100 text-red-500' : 'bg-gray-100 text-gray-400'}`}>
                             <span className="material-symbols-outlined text-[20px]">priority_high</span>
@@ -424,7 +803,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                 </div>
 
                 {/* Friend/Person Link */}
-                <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
                     <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Link to Person</label>
                     <div className="flex items-center gap-3">
                         {formData.friendId && (() => {
@@ -460,7 +839,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                 </div>
 
                 {/* Time Management */}
-                <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
                     <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-3">Time Management</label>
                     
                     <div className="space-y-4">
@@ -518,7 +897,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
 
                 {/* Quick Link Selector */}
                 {(data.keyResults.length > 0 || data.objectives.length > 0 || data.lifeAreas.length > 0) && (
-                    <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                         <QuickLinkSelector
                             entityType="task"
                             currentLinks={{
@@ -557,7 +936,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
         {/* HABIT FORM */}
         {type === 'habit' && (
             <div className="space-y-6">
-                <div className="bg-white p-6 rounded-3xl shadow-soft border border-gray-100 flex flex-col items-center gap-4">
+                <div className="bg-white p-6 rounded-3xl shadow-soft border border-slate-100 flex flex-col items-center gap-4">
                     <div className="size-20 rounded-2xl bg-primary/10 flex items-center justify-center text-primary text-4xl mb-2">
                         <span className="material-symbols-outlined" style={{fontSize: '40px'}}>{formData.icon || 'star'}</span>
                     </div>
@@ -565,7 +944,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                         value={formData.name || ''} onChange={(e) => handleChange('name', e.target.value)} placeholder="Name your habit" autoFocus />
                 </div>
 
-                <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 space-y-4">
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4">
                     
                     {/* Quick Link Selector for Habits */}
                     {(data.keyResults.length > 0 || data.objectives.length > 0 || data.lifeAreas.length > 0) && (
@@ -633,8 +1012,15 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                           <p className="text-xs text-text-tertiary mt-2">
                             Each time you complete this habit, the Key Result "{linkedKR.title}" will increase by this amount.
                             {linkedKR.measurementType === 'currency' && ' Example: €10 per completion'}
-                            {linkedKR.measurementType === 'number' && ' Example: 0.5 km per completion'}
+                            {linkedKR.measurementType === 'number' && ' Example: 0.5 per completion'}
                             {linkedKR.measurementType === 'percentage' && ' Example: 1% per completion'}
+                            {linkedKR.measurementType === 'weight' && ' Example: 0.1 kg per completion'}
+                            {linkedKR.measurementType === 'distance' && ' Example: 0.5 km per completion'}
+                            {linkedKR.measurementType === 'time' && ' Example: 1 hour per completion'}
+                            {linkedKR.measurementType === 'height' && ' Example: 0.01 m per completion'}
+                            {linkedKR.measurementType === 'pages' && ' Example: 5 pages per completion'}
+                            {linkedKR.measurementType === 'chapters' && ' Example: 1 chapter per completion'}
+                            {linkedKR.measurementType === 'custom' && ` Example: 1 ${linkedKR.customUnit || 'unit'} per completion`}
                           </p>
                         </div>
                       );
@@ -664,6 +1050,47 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                           <span className="text-text-main">Selecteer template...</span>
                           <span className="material-symbols-outlined text-text-tertiary">arrow_forward</span>
                         </button>
+                      </div>
+                    )}
+
+                    {/* Schedule Selector */}
+                    <div>
+                      <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-2">
+                        Schedule
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowScheduleSelector(true)}
+                        className={`w-full p-3 bg-gray-50 rounded-xl border-2 transition-colors text-left flex items-center justify-between ${
+                          habitSchedule ? 'border-primary bg-primary/5' : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        <span className={habitSchedule ? 'text-primary font-medium' : 'text-text-tertiary'}>
+                          {habitSchedule 
+                            ? habitSchedule.frequency === 'daily' 
+                              ? 'Daily' 
+                              : habitSchedule.frequency === 'weekly'
+                              ? `Weekly (${habitSchedule.daysOfWeek?.length || 0} days)`
+                              : 'Monthly'
+                            : 'Select'}
+                        </span>
+                        <span className="material-symbols-outlined text-text-tertiary">arrow_forward</span>
+                      </button>
+                    </div>
+
+                    {/* Generate as Tasks Option (only for new habits) */}
+                    {!editId && habitSchedule && (
+                      <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl">
+                        <input
+                          type="checkbox"
+                          id="generateAsTasks"
+                          checked={generateAsTasks}
+                          onChange={(e) => setGenerateAsTasks(e.target.checked)}
+                          className="w-5 h-5 rounded border-gray-300 text-primary focus:ring-primary"
+                        />
+                        <label htmlFor="generateAsTasks" className="text-sm font-medium text-text-main cursor-pointer">
+                          Generate as tasks based on schedule
+                        </label>
                       </div>
                     )}
 
@@ -759,7 +1186,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
             <div className="space-y-6 animate-fade-in-up">
                 
                 {/* Hero Card */}
-                <div className="bg-gradient-to-br from-white to-gray-50 p-6 rounded-[2rem] shadow-soft border border-white">
+                <div className="bg-gradient-to-br from-white to-gray-50 p-6 rounded-2xl shadow-soft border border-white">
                     <label className="block text-xs font-bold text-primary uppercase tracking-widest mb-3 flex items-center gap-2">
                         <span className="material-symbols-outlined text-[16px]">flag</span>
                         Objective
@@ -781,9 +1208,26 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                     />
                 </div>
 
+                {/* Template Selector (only for new objectives) */}
+                {!editId && (
+                  <div>
+                    <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-2">
+                      Start vanuit Template (optioneel)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowObjectiveTemplateSelector(true)}
+                      className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 hover:bg-gray-100 transition-colors text-left flex items-center justify-between"
+                    >
+                      <span className="text-text-main">Selecteer goal template...</span>
+                      <span className="material-symbols-outlined text-text-tertiary">arrow_forward</span>
+                    </button>
+                  </div>
+                )}
+
                 {/* Context Switcher */}
                 {data.showCategory && (
-                    <div className="bg-white p-2 rounded-2xl shadow-sm border border-gray-100 flex">
+                    <div className="bg-white p-2 rounded-2xl shadow-sm border border-slate-100 flex">
                         {['professional', 'personal'].map((cat) => (
                             <button
                                 key={cat}
@@ -797,18 +1241,19 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                 )}
 
                 {/* Meta Details */}
-                <div className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100 group hover:border-primary/20 transition-colors">
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 group hover:border-primary/30 transition-colors">
                     <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Status</label>
                     <select className="w-full bg-transparent font-semibold outline-none text-text-main appearance-none cursor-pointer" 
                         value={formData.status || 'On Track'} onChange={(e) => handleChange('status', e.target.value)}>
                         <option value="On Track">🟢 On Track</option>
                         <option value="At Risk">🟠 At Risk</option>
                         <option value="Off Track">🔴 Off Track</option>
+                        <option value="No status">⚪ No status</option>
                     </select>
                 </div>
 
                 {/* Timeline Dates - VERPLICHT */}
-                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
                     <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-4">Timeline Dates <span className="text-red-500">*</span></label>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
@@ -837,9 +1282,134 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                     </p>
                 </div>
 
+                {/* Key Results from Template */}
+                {!editId && loadedTemplateId && (
+                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+                        <div className="flex items-center justify-between mb-4">
+                            <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest">Key Results</label>
+                            <span className="text-xs text-text-tertiary">{templateKeyResults.length} result{templateKeyResults.length !== 1 ? 's' : ''}</span>
+                        </div>
+                        {templateKeyResults.length > 0 ? (
+                        <div className="space-y-3">
+                            {templateKeyResults.map((kr, index) => (
+                                    <div key={kr.id || index} className="bg-gray-50 p-4 rounded-xl border border-slate-100">
+                                    <div className="flex items-start justify-between mb-2">
+                                        <input
+                                            type="text"
+                                            className="flex-1 text-sm font-semibold text-text-main bg-transparent outline-none"
+                                            value={kr.title || ''}
+                                            onChange={(e) => {
+                                                const updated = [...templateKeyResults];
+                                                updated[index] = { ...updated[index], title: e.target.value };
+                                                setTemplateKeyResults(updated);
+                                            }}
+                                            placeholder="Key Result title"
+                                        />
+                                        <button
+                                            onClick={() => {
+                                                const updated = templateKeyResults.filter((_, i) => i !== index);
+                                                setTemplateKeyResults(updated);
+                                            }}
+                                            className="text-xs text-red-500 hover:text-red-600 font-medium ml-2"
+                                        >
+                                            Remove
+                                        </button>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3 mt-3">
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-1">Current</label>
+                                            <input
+                                                type="number"
+                                                className="w-full p-2 bg-white rounded-lg outline-none text-sm font-medium"
+                                                value={kr.current || 0}
+                                                onChange={(e) => {
+                                                    const updated = [...templateKeyResults];
+                                                    updated[index] = { ...updated[index], current: parseFloat(e.target.value) || 0 };
+                                                    setTemplateKeyResults(updated);
+                                                }}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-1">Target</label>
+                                            <input
+                                                type="number"
+                                                className="w-full p-2 bg-white rounded-lg outline-none text-sm font-medium"
+                                                value={kr.target || 100}
+                                                onChange={(e) => {
+                                                    const updated = [...templateKeyResults];
+                                                    updated[index] = { ...updated[index], target: parseFloat(e.target.value) || 100 };
+                                                    setTemplateKeyResults(updated);
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="mt-3">
+                                        <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-1">Measurement Type</label>
+                                        <select
+                                            className="w-full p-2 bg-white rounded-lg outline-none text-sm font-medium"
+                                            value={kr.measurementType || 'percentage'}
+                                            onChange={(e) => {
+                                                const updated = [...templateKeyResults];
+                                                updated[index] = { ...updated[index], measurementType: e.target.value as any };
+                                                setTemplateKeyResults(updated);
+                                            }}
+                                        >
+                                            <option value="percentage">Percentage</option>
+                                            <option value="number">Number</option>
+                                            <option value="currency">Currency</option>
+                                            <option value="weight">Weight</option>
+                                            <option value="distance">Distance</option>
+                                            <option value="time">Time</option>
+                                            <option value="height">Height</option>
+                                            <option value="pages">Pages</option>
+                                            <option value="chapters">Chapters</option>
+                                            <option value="custom">Custom</option>
+                                        </select>
+                                    </div>
+                                    {kr.measurementType === 'custom' && (
+                                        <div className="mt-3">
+                                            <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-1">Custom Unit</label>
+                                            <input
+                                                type="text"
+                                                className="w-full p-2 bg-white rounded-lg outline-none text-sm font-medium"
+                                                value={kr.customUnit || ''}
+                                                onChange={(e) => {
+                                                    const updated = [...templateKeyResults];
+                                                    updated[index] = { ...updated[index], customUnit: e.target.value };
+                                                    setTemplateKeyResults(updated);
+                                                }}
+                                                placeholder="e.g. hours, km, etc."
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                        ) : (
+                            <div className="text-center py-6 text-text-tertiary text-sm">
+                                <p>No key results in template. Add them below.</p>
+                            </div>
+                        )}
+                        <button
+                            onClick={() => {
+                                setTemplateKeyResults([...templateKeyResults, {
+                                    title: '',
+                                    current: 0,
+                                    target: 100,
+                                    measurementType: 'percentage',
+                                    status: 'On Track'
+                                }]);
+                            }}
+                            className="mt-4 w-full py-2 text-sm font-semibold text-primary border-2 border-primary rounded-xl hover:bg-primary/5 transition-colors"
+                        >
+                            + Add Key Result
+                        </button>
+                    </div>
+                )}
+
                 {/* Timeline Color */}
                 {formData.startDate && formData.endDate && (
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
                         <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-4">Timeline Color</label>
                         
                         {/* Predefined Colors */}
@@ -898,7 +1468,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
 
                 {/* Life Area Card */}
                 {data.lifeAreas.length > 0 && (
-                    <div className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100">
+                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
                         <div className="flex items-center justify-between mb-2">
                             <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider">Life Area</label>
                             <button
@@ -948,11 +1518,11 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                 )}
 
                 {/* Owner Card */}
-                <div className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100">
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
                     <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Owner</label>
                     <button 
                         onClick={() => setShowOwnerModal(true)}
-                        className="w-full flex items-center gap-4 p-3 rounded-xl hover:bg-gray-50 transition-colors border border-gray-100"
+                        className="w-full flex items-center gap-4 p-3 rounded-xl hover:bg-gray-50 transition-colors border border-slate-100"
                     >
                         <div className="size-12 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden border-2 border-white shadow-sm">
                             {formData.ownerImage ? (
@@ -972,6 +1542,62 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                         <span className="material-symbols-outlined text-text-tertiary">chevron_right</span>
                     </button>
                 </div>
+
+                {/* Link Existing Key Results (only when editing existing objective) */}
+                {editId && type === 'objective' && (
+                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+                        <div className="flex items-center justify-between mb-3">
+                            <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider">Key Results</label>
+                            <button
+                                type="button"
+                                onClick={() => setShowLinkKeyResultModal(true)}
+                                className="text-primary text-sm font-bold hover:bg-primary/5 px-3 py-1.5 rounded-lg transition-colors"
+                            >
+                                + Add Result
+                            </button>
+                        </div>
+                        {(() => {
+                            const linkedKRs = data.keyResults.filter(kr => kr.objectiveId === editId);
+                            if (linkedKRs.length > 0) {
+                                return (
+                                    <div className="space-y-3">
+                                        {linkedKRs.map(kr => {
+                                            const percent = Math.min(Math.round((kr.current / kr.target) * 100), 100);
+                                            return (
+                                                <div 
+                                                    key={kr.id} 
+                                                    onClick={() => onEdit && onEdit('keyResult', kr.id, editId)}
+                                                    className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 group hover:shadow-md hover:border-primary/20 cursor-pointer active:scale-[0.98] transition-transform"
+                                                >
+                                                    <div className="flex justify-between items-start mb-2">
+                                                        <h4 className="text-base font-semibold text-text-main leading-snug flex-1 mr-2 group-hover:text-primary transition-colors">{kr.title}</h4>
+                                                        <span className={`shrink-0 text-[10px] font-bold uppercase px-2 py-0.5 rounded ${getStatusBadge(getEffectiveStatus(kr.status, kr.id, true))}`}>
+                                                            {getEffectiveStatus(kr.status, kr.id, true)}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-end justify-between mb-2">
+                                                        <span className="text-xs text-text-secondary font-medium">
+                                                            {data.formatKeyResultValue(kr, kr.current)} / <span className="text-text-tertiary">{data.formatKeyResultValue(kr, kr.target)}</span>
+                                                        </span>
+                                                        <span className="text-xs font-bold text-text-main">{percent}%</span>
+                                                    </div>
+                                                    <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
+                                                        <div className={`h-full rounded-full ${getStatusColor(getEffectiveStatus(kr.status, kr.id, true))} opacity-70`} style={{width: `${percent}%`}}></div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                );
+                            }
+                            return (
+                                <div className="p-8 text-center border-2 border-dashed border-slate-200 rounded-2xl text-text-tertiary text-sm">
+                                    No Key Results yet.
+                                </div>
+                            );
+                        })()}
+                    </div>
+                )}
             </div>
         )}
 
@@ -980,7 +1606,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
             <div className="space-y-6 animate-fade-in-up">
                  
                 {/* Visual Preview */}
-                <div className="bg-white p-5 rounded-2xl shadow-soft border border-slate-100 mb-6">
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 mb-6">
                     <div className="flex justify-between items-start mb-2 opacity-50">
                         <span className="text-[10px] font-bold uppercase tracking-widest text-text-tertiary">Live Preview</span>
                     </div>
@@ -1003,9 +1629,26 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                                         return val.toFixed(decimals);
                                     };
                                     
-                                    const unit = measurementType === 'percentage' ? '%' : 
-                                                 measurementType === 'currency' ? (currency === 'EUR' ? '€' : currency === 'USD' ? '$' : currency) : 
-                                                 '';
+                                    let unit = '';
+                                    if (measurementType === 'percentage') {
+                                        unit = '%';
+                                    } else if (measurementType === 'currency') {
+                                        unit = currency === 'EUR' ? '€' : currency === 'USD' ? '$' : currency;
+                                    } else if (measurementType === 'weight') {
+                                        unit = 'kg';
+                                    } else if (measurementType === 'distance') {
+                                        unit = 'km';
+                                    } else if (measurementType === 'time') {
+                                        unit = 'hours';
+                                    } else if (measurementType === 'height') {
+                                        unit = 'm';
+                                    } else if (measurementType === 'pages') {
+                                        unit = 'pages';
+                                    } else if (measurementType === 'chapters') {
+                                        unit = 'chapters';
+                                    } else if (measurementType === 'custom') {
+                                        unit = formData.customUnit || '';
+                                    }
                                     
                                     return `${formatValue(current)}${unit ? ' ' + unit : ''} / ${formatValue(target)}${unit ? ' ' + unit : ''}`;
                                 })()}
@@ -1020,7 +1663,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                     </div>
                 </div>
 
-                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                     <label className="block text-xs font-bold text-primary uppercase tracking-widest mb-3 flex items-center gap-2">
                         <span className="material-symbols-outlined text-[16px]">target</span>
                         Measurable Result
@@ -1036,7 +1679,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                 </div>
 
                 {/* Target Configuration */}
-                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
                     <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-4">Target Configuration</label>
                     
                     {/* Measurement Type Selection */}
@@ -1046,7 +1689,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                             className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-primary text-text-main font-medium"
                             value={formData.measurementType || 'percentage'}
                             onChange={(e) => {
-                                const newType = e.target.value as 'percentage' | 'number' | 'currency';
+                                const newType = e.target.value as 'percentage' | 'number' | 'currency' | 'weight' | 'distance' | 'time' | 'height' | 'pages' | 'chapters' | 'custom';
                                 handleChange('measurementType', newType);
                                 // Set defaults based on type
                                 if (newType === 'percentage') {
@@ -1062,12 +1705,47 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                                     handleChange('current', 0);
                                     handleChange('decimals', 2);
                                     if (!formData.currency) handleChange('currency', 'EUR');
+                                } else if (newType === 'weight') {
+                                    handleChange('target', 80);
+                                    handleChange('current', 85);
+                                    handleChange('decimals', 1);
+                                } else if (newType === 'distance') {
+                                    handleChange('target', 42.2);
+                                    handleChange('current', 0);
+                                    handleChange('decimals', 1);
+                                } else if (newType === 'time') {
+                                    handleChange('target', 10000);
+                                    handleChange('current', 0);
+                                    handleChange('decimals', 0);
+                                } else if (newType === 'height') {
+                                    handleChange('target', 180);
+                                    handleChange('current', 175);
+                                    handleChange('decimals', 0);
+                                } else if (newType === 'pages') {
+                                    handleChange('target', 500);
+                                    handleChange('current', 0);
+                                    handleChange('decimals', 0);
+                                } else if (newType === 'chapters') {
+                                    handleChange('target', 10);
+                                    handleChange('current', 0);
+                                    handleChange('decimals', 0);
+                                } else if (newType === 'custom') {
+                                    handleChange('target', 100);
+                                    handleChange('current', 0);
+                                    handleChange('decimals', 0);
                                 }
                             }}
                         >
-                            <option value="percentage">% Percent</option>
-                            <option value="number"># Number</option>
-                            <option value="currency">€ Currency</option>
+                            <option value="number">Numeric</option>
+                            <option value="percentage">Percentage</option>
+                            <option value="currency">Money</option>
+                            <option value="weight">Weight</option>
+                            <option value="distance">Distance</option>
+                            <option value="time">Time</option>
+                            <option value="height">Height</option>
+                            <option value="pages">Pages</option>
+                            <option value="chapters">Chapters</option>
+                            <option value="custom">Custom</option>
                         </select>
                     </div>
 
@@ -1093,6 +1771,20 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                                 <option value="NZD">NZ$ NZD</option>
                                 <option value="CHF">CHF CHF</option>
                             </select>
+                        </div>
+                    )}
+
+                    {/* Custom Unit Input (only for custom type) */}
+                    {formData.measurementType === 'custom' && (
+                        <div className="mb-6">
+                            <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-3">Custom Unit</label>
+                            <input
+                                type="text"
+                                className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-primary text-text-main font-medium"
+                                value={formData.customUnit || ''}
+                                onChange={(e) => handleChange('customUnit', e.target.value)}
+                                placeholder="e.g., reps, sets, items"
+                            />
                         </div>
                     )}
 
@@ -1125,6 +1817,13 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary font-medium">
                                     {formData.measurementType === 'percentage' ? '%' : 
                                      formData.measurementType === 'currency' ? (formData.currency === 'EUR' ? '€' : formData.currency === 'USD' ? '$' : formData.currency || '€') : 
+                                     formData.measurementType === 'weight' ? 'kg' :
+                                     formData.measurementType === 'distance' ? 'km' :
+                                     formData.measurementType === 'time' ? 'hours' :
+                                     formData.measurementType === 'height' ? 'm' :
+                                     formData.measurementType === 'pages' ? 'pages' :
+                                     formData.measurementType === 'chapters' ? 'chapters' :
+                                     formData.measurementType === 'custom' ? (formData.customUnit || '') : 
                                      ''}
                                 </span>
                             </div>
@@ -1142,6 +1841,13 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary font-medium">
                                     {formData.measurementType === 'percentage' ? '%' : 
                                      formData.measurementType === 'currency' ? (formData.currency === 'EUR' ? '€' : formData.currency === 'USD' ? '$' : formData.currency || '€') : 
+                                     formData.measurementType === 'weight' ? 'kg' :
+                                     formData.measurementType === 'distance' ? 'km' :
+                                     formData.measurementType === 'time' ? 'hours' :
+                                     formData.measurementType === 'height' ? 'm' :
+                                     formData.measurementType === 'pages' ? 'pages' :
+                                     formData.measurementType === 'chapters' ? 'chapters' :
+                                     formData.measurementType === 'custom' ? (formData.customUnit || '') : 
                                      ''}
                                 </span>
                             </div>
@@ -1149,7 +1855,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                     </div>
                 </div>
 
-                <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
                      <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Initial Status</label>
                      <div className="flex gap-2">
                         {['On Track', 'At Risk', 'Off Track'].map(s => (
@@ -1165,7 +1871,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                 </div>
 
                 {/* Timeline Dates - VERPLICHT */}
-                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
                     <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-4">Timeline Dates <span className="text-red-500">*</span></label>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
@@ -1195,11 +1901,11 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                 </div>
 
                 {/* Owner Card */}
-                <div className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100">
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
                     <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Owner</label>
                     <button 
                         onClick={() => setShowOwnerModal(true)}
-                        className="w-full flex items-center gap-4 p-3 rounded-xl hover:bg-gray-50 transition-colors border border-gray-100"
+                        className="w-full flex items-center gap-4 p-3 rounded-xl hover:bg-gray-50 transition-colors border border-slate-100"
                     >
                         <div className="size-12 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden border-2 border-white shadow-sm">
                             {formData.ownerImage ? (
@@ -1235,7 +1941,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
         {/* FRIEND FORM */}
         {type === 'friend' && (
             <div className="space-y-6">
-                <div className="bg-white p-6 rounded-3xl shadow-soft border border-gray-100 flex flex-col items-center gap-4">
+                <div className="bg-white p-6 rounded-3xl shadow-soft border border-slate-100 flex flex-col items-center gap-4">
                      <div className="size-20 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden border-4 border-white shadow-sm">
                          <span className="material-symbols-outlined text-[40px] text-gray-300">person_add</span>
                      </div>
@@ -1244,7 +1950,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                 </div>
 
                 <div className="space-y-4">
-                     <div className="bg-white p-4 rounded-2xl border border-gray-100">
+                     <div className="bg-white p-4 rounded-2xl border border-slate-100">
                         <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Relationship</label>
                         <div className="flex flex-wrap gap-2">
                             {['friend', 'professional', 'family', 'mentor'].map(role => (
@@ -1254,12 +1960,12 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                             ))}
                         </div>
                      </div>
-                     <div className="bg-white p-4 rounded-2xl border border-gray-100">
+                     <div className="bg-white p-4 rounded-2xl border border-slate-100">
                         <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Label</label>
                         <input type="text" className="w-full bg-gray-50 p-3 rounded-xl outline-none font-medium" 
                             value={formData.role || ''} onChange={(e) => handleChange('role', e.target.value)} placeholder="e.g. Bestie, Gym Buddy" />
                      </div>
-                     <div className="bg-white p-4 rounded-2xl border border-gray-100">
+                     <div className="bg-white p-4 rounded-2xl border border-slate-100">
                         <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Location</label>
                         <input type="text" className="w-full bg-gray-50 p-3 rounded-xl outline-none font-medium" 
                             value={formData.location || ''} onChange={(e) => handleChange('location', e.target.value)} placeholder="e.g. San Francisco" />
@@ -1272,7 +1978,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
          {type === 'lifeArea' && (
             <div className="space-y-6 animate-fade-in-up">
                 {/* Hero Card */}
-                <div className="bg-gradient-to-br from-white to-gray-50 p-6 rounded-[2rem] shadow-soft border border-white">
+                <div className="bg-gradient-to-br from-white to-gray-50 p-6 rounded-2xl shadow-soft border border-white">
                     <div className="flex items-center gap-4 mb-4">
                         {/* Icon Preview */}
                         <div 
@@ -1321,7 +2027,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                 </div>
 
                 {/* Icon Selection */}
-                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                     <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-4">Icon</label>
                     <div className="flex gap-2 mb-3">
                         <input 
@@ -1362,7 +2068,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                 </div>
 
                 {/* Color Selection */}
-                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                     <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-4">Color</label>
                     
                     {/* Predefined Colors */}
@@ -1419,7 +2125,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                 </div>
 
                 {/* Image URL (Optional) */}
-                <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
                     <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-2">Image URL (Optional)</label>
                     <input 
                         type="text" 
@@ -1437,7 +2143,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
          {type === 'vision' && (
             <div className="space-y-6 animate-fade-in-up">
                 {/* Vision Statement */}
-                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                     <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-3 flex items-center gap-2">
                         <span className="material-symbols-outlined text-[16px]">lightbulb</span>
                         Vision Statement
@@ -1457,7 +2163,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
 
                 {/* Life Area Selection (only if creating new vision) */}
                 {!editId && data.lifeAreas.length > 0 && (
-                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
                         <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-2">Life Area</label>
                         <select 
                             className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main appearance-none" 
@@ -1473,7 +2179,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                 )}
 
                 {/* Vision Images (Optional) */}
-                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                     <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-4">Vision Images (Optional)</label>
                     <p className="text-xs text-text-secondary mb-4">
                         Add images that represent your vision. These can be inspirational photos, goals, or visual reminders.
@@ -1545,7 +2251,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
          {/* PLACE FORM */}
          {type === 'place' && (
             <div className="space-y-6">
-                 <div className="bg-white p-6 rounded-3xl shadow-soft border border-gray-100">
+                 <div className="bg-white p-6 rounded-3xl shadow-soft border border-slate-100">
                      <div className="flex items-center gap-4 mb-4">
                          <div className="size-12 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center">
                              <span className="material-symbols-outlined">storefront</span>
@@ -1570,7 +2276,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
         {/* TIME SLOT FORM */}
         {type === 'timeSlot' && (
             <div className="space-y-6 animate-fade-in-up">
-                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                     <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-3">Title</label>
                     <input 
                         type="text" 
@@ -1582,7 +2288,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                     />
                 </div>
 
-                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                     <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-3">Date</label>
                     <input 
                         type="date" 
@@ -1594,7 +2300,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                         <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-3">Start Time</label>
                         <input 
                             type="time" 
@@ -1604,7 +2310,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                             required
                         />
                     </div>
-                    <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                         <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-3">End Time</label>
                         <input 
                             type="time" 
@@ -1616,7 +2322,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                     </div>
                 </div>
 
-                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                     <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-3">Type</label>
                     <select 
                         className="w-full p-4 bg-gray-50 rounded-xl outline-none font-medium text-text-main" 
@@ -1631,7 +2337,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                     </select>
                 </div>
 
-                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                     <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-3">Color</label>
                     <input 
                         type="color" 
@@ -1642,7 +2348,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                 </div>
 
                 {data.objectives.length > 0 && (
-                    <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                         <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-3">Link to Key Result (Optional)</label>
                         <select 
                             className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main appearance-none" 
@@ -1721,7 +2427,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
 
                 {/* Life Area Linkage - Tertiary, disabled if key result or objective is set */}
                 {data.lifeAreas.length > 0 && (
-                    <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                         <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-3">Link to Life Area (Optional)</label>
                         <select 
                             className="w-full p-4 bg-gray-50 rounded-xl outline-none font-medium text-text-main disabled:opacity-50 disabled:cursor-not-allowed" 
@@ -1900,6 +2606,96 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
         </div>
       )}
 
+      {/* Link Key Results Modal */}
+      {showLinkKeyResultModal && editId && type === 'objective' && (
+        <div className="absolute inset-0 z-[80] flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowLinkKeyResultModal(false)}></div>
+          <div className="bg-white w-[90%] max-w-md rounded-3xl p-6 shadow-2xl relative z-10 animate-fade-in-up max-h-[80vh] flex flex-col">
+            <h3 className="text-lg font-bold text-text-main mb-4">Add Key Result</h3>
+            
+            <div className="flex-1 overflow-y-auto space-y-3">
+              {/* Create New Button */}
+              <button
+                onClick={() => {
+                  setShowLinkKeyResultModal(false);
+                  onEdit && onEdit('keyResult', undefined, editId);
+                }}
+                className="w-full mb-4 p-4 rounded-xl bg-primary/10 border-2 border-primary/30 hover:bg-primary/20 transition-colors flex items-center justify-center gap-2"
+              >
+                <span className="material-symbols-outlined text-primary">add</span>
+                <span className="font-semibold text-primary">Create New Key Result</span>
+              </button>
+              
+              {/* Existing Key Results (not yet linked to this Objective) - same logic as ObjectiveDetail */}
+              {data.keyResults.filter(kr => kr.objectiveId !== editId).length > 0 && (
+                <>
+                  <div className="mb-3">
+                    <h4 className="text-sm font-bold text-text-tertiary uppercase tracking-wider">Select Existing Key Result</h4>
+                  </div>
+                  <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                    {data.keyResults.filter(kr => kr.objectiveId !== editId).map(kr => {
+                      const percent = Math.min(Math.round((kr.current / kr.target) * 100), 100);
+                      const parentObj = data.objectives.find(o => o.id === kr.objectiveId);
+                      return (
+                        <button
+                          key={kr.id}
+                          onClick={() => {
+                            // Check: Een key result kan niet aan meerdere goals hangen
+                            if (kr.objectiveId && kr.objectiveId !== editId) {
+                              alert('Deze Key Result is al gekoppeld aan een ander Goal. Een Key Result kan niet aan meerdere Goals gekoppeld worden.');
+                              return;
+                            }
+                            // Update key result to link to this objective
+                            data.updateKeyResult({ ...kr, objectiveId: editId });
+                            setShowLinkKeyResultModal(false);
+                          }}
+                          className="w-full p-4 rounded-xl bg-white border-2 border-slate-100 hover:border-primary/30 hover:bg-gray-50 transition-colors text-left"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1">
+                              <h5 className="font-semibold text-text-main mb-1">{kr.title}</h5>
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="text-xs text-text-secondary">
+                                  {data.formatKeyResultValue(kr, kr.current)} / {data.formatKeyResultValue(kr, kr.target)}
+                                </span>
+                                <span className="text-xs font-bold text-text-main">{percent}%</span>
+                              </div>
+                              {parentObj && (
+                                <p className="text-[10px] text-text-tertiary">
+                                  Currently linked to: {parentObj.title}
+                                </p>
+                              )}
+                            </div>
+                            <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${getStatusBadge(getEffectiveStatus(kr.status, kr.id, true))}`}>
+                              {getEffectiveStatus(kr.status, kr.id, true)}
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+              
+              {data.keyResults.filter(kr => kr.objectiveId !== editId).length === 0 && (
+                <div className="text-center py-8">
+                  <span className="material-symbols-outlined text-4xl text-text-tertiary mb-2">target</span>
+                  <p className="text-sm text-text-tertiary">No other key results available</p>
+                  <p className="text-xs text-text-tertiary mt-1">Create a new key result to add it to this objective</p>
+                </div>
+              )}
+            </div>
+            
+            <button 
+              onClick={() => setShowLinkKeyResultModal(false)}
+              className="w-full mt-4 py-3 bg-gray-100 text-text-main font-bold rounded-xl hover:bg-gray-200"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Template Selector Modal */}
       {/* Task Template Selector Modal */}
       {showTemplateSelector && type === 'task' && (
@@ -1951,6 +2747,86 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
             </div>
           </div>
         </div>
+      )}
+
+      {/* Objective Template Selector Modal */}
+      {showObjectiveTemplateSelector && type === 'objective' && (
+        <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-xl font-bold text-text-main">Selecteer Goal Template</h3>
+              <button
+                onClick={() => setShowObjectiveTemplateSelector(false)}
+                className="text-text-tertiary hover:text-text-main"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              {/* Group by Life Area Category */}
+              {['Work & Career', 'Sport & Health', 'Money & Finance', 'Personal Development', 'Fun & Relaxation', 'Education & Learning', 'Family & Friends', 'Love & Relationships', 'Spirituality'].map(category => {
+                const categoryTemplates = getObjectiveTemplatesByCategory(category, data.objectiveTemplates);
+                if (categoryTemplates.length === 0) return null;
+                
+                return (
+                  <div key={category} className="mb-6">
+                    <h4 className="text-sm font-bold text-text-tertiary uppercase tracking-wider mb-3">{category}</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {categoryTemplates.map(template => (
+                        <div
+                          key={template.id}
+                          onClick={() => {
+                            const objectiveFromTemplate = createObjectiveFromTemplateUtil(template, formData.lifeAreaId);
+                            setFormData({ ...formData, ...objectiveFromTemplate, id: formData.id || objectiveFromTemplate.id });
+                            setShowObjectiveTemplateSelector(false);
+                          }}
+                          className="p-4 border border-gray-200 rounded-xl hover:border-primary hover:shadow-md transition-all cursor-pointer"
+                        >
+                          <div className="flex items-center gap-3 mb-2">
+                            <div className="size-10 rounded-lg bg-gray-100 flex items-center justify-center">
+                              <span className="material-symbols-outlined text-text-secondary">{template.icon}</span>
+                            </div>
+                            <div className="flex-1">
+                              <h4 className="font-bold text-text-main text-sm">{template.name}</h4>
+                              {template.description && (
+                                <p className="text-xs text-text-tertiary mt-1 line-clamp-2">{template.description}</p>
+                              )}
+                            </div>
+                          </div>
+                          {template.usageCount > 0 && (
+                            <span className="text-xs text-text-tertiary">{template.usageCount}x gebruikt</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showScheduleSelector && type === 'habit' && (
+        <HabitScheduleSelector
+          schedule={habitSchedule}
+          onScheduleChange={(schedule) => {
+            setHabitSchedule(schedule);
+            setShowScheduleSelector(false);
+          }}
+          onClose={() => setShowScheduleSelector(false)}
+        />
+      )}
+
+      {showScheduleSelector && type === 'habit' && (
+        <HabitScheduleSelector
+          schedule={habitSchedule}
+          onScheduleChange={(schedule) => {
+            setHabitSchedule(schedule);
+            setShowScheduleSelector(false);
+          }}
+          onClose={() => setShowScheduleSelector(false)}
+        />
       )}
 
       {showTemplateSelector && type === 'habit' && (

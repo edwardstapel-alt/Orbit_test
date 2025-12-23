@@ -669,13 +669,26 @@ export const LifeAreaDetail: React.FC<LifeAreaDetailProps> = ({
             </div>
             
             <div className="flex-1 overflow-y-auto px-6 py-4">
-              {/* Add New Button */}
+              {/* Create New Goal */}
               <button
                 onClick={handleAddNewGoal}
+                className="w-full mb-3 p-4 rounded-xl bg-white border-2 border-gray-200 hover:border-primary/30 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+              >
+                <span className="material-symbols-outlined text-text-main">add</span>
+                <span className="font-semibold text-text-main">Create New Goal</span>
+              </button>
+              
+              {/* Create from Template */}
+              <button
+                onClick={() => {
+                  setActiveModal(null);
+                  localStorage.setItem('orbit_newObjective_lifeAreaId', lifeAreaId);
+                  onNavigate && onNavigate(View.GOAL_PLANS);
+                }}
                 className="w-full mb-4 p-4 rounded-xl bg-primary/10 border-2 border-primary/30 hover:bg-primary/20 transition-colors flex items-center justify-center gap-2"
               >
-                <span className="material-symbols-outlined text-primary">add</span>
-                <span className="font-semibold text-primary">Create New Goal</span>
+                <span className="material-symbols-outlined text-primary">auto_awesome</span>
+                <span className="font-semibold text-primary">Create Goal from Template</span>
               </button>
               
               {/* Existing Goals (not yet linked to this Life Area) */}

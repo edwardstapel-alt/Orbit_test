@@ -3,6 +3,7 @@ import { View } from '../types';
 import { useData } from '../context/DataContext';
 import { TopNav } from '../components/TopNav';
 import { QuickActionsPanel } from '../components/QuickActionsPanel';
+import { KeyResultStatusView } from './KeyResultStatusView';
 
 interface DashboardProps {
   onNavigate: (view: View, habitId?: string, lifeAreaId?: string) => void;
@@ -18,22 +19,49 @@ const ObjectiveCard: React.FC<{
     keyResults: any[], 
     onView: () => void, 
     onEdit: (type: 'keyResult', id?: string, parentId?: string) => void,
-    onAddKR: () => void 
-}> = ({ objective, keyResults, onView, onEdit, onAddKR }) => {
+    onAddKR: () => void,
+    onKeyResultClick: (krId: string) => void
+}> = ({ objective, keyResults, onView, onEdit, onAddKR, onKeyResultClick }) => {
+  const { getStatusUpdatesByKeyResult } = useData();
   
   const calculatedProgress = keyResults.length > 0 
     ? Math.round(keyResults.reduce((acc, kr) => acc + (kr.current / kr.target) * 100, 0) / keyResults.length)
     : objective.progress;
 
+  // Helper to check if objective has any status updates (via its key results)
+  const hasObjectiveStatusUpdates = (objId: string) => {
+    const linkedKRs = keyResults.filter(kr => kr.objectiveId === objId);
+    return linkedKRs.some(kr => {
+      const updates = getStatusUpdatesByKeyResult(kr.id);
+      return updates.length > 0;
+    });
+  };
+
+  // Helper to check if key result has status updates
+  const hasKeyResultStatusUpdates = (krId: string) => {
+    const updates = getStatusUpdatesByKeyResult(krId);
+    return updates.length > 0;
+  };
+
+  // Get effective status (No status if no updates exist)
+  const getEffectiveStatus = (status: string, entityId: string, isKeyResult: boolean = false) => {
+    const hasUpdates = isKeyResult 
+      ? hasKeyResultStatusUpdates(entityId)
+      : hasObjectiveStatusUpdates(entityId);
+    return hasUpdates ? status : 'No status';
+  };
+
   const getStatusColor = (status: string) => {
     if (status === 'On Track') return 'bg-green-100 text-green-700';
     if (status === 'At Risk') return 'bg-amber-100 text-amber-700';
+    if (status === 'No status') return 'bg-gray-100 text-gray-600';
     return 'bg-red-100 text-red-700';
   };
 
   const getProgressBarColor = (status: string) => {
     if (status === 'On Track') return 'bg-green-500';
     if (status === 'At Risk') return 'bg-amber-500';
+    if (status === 'No status') return 'bg-gray-400';
     return 'bg-red-500';
   }
 
@@ -43,8 +71,8 @@ const ObjectiveCard: React.FC<{
       <div className="flex items-start justify-between mb-2 cursor-pointer group" onClick={onView}>
         <div className="flex-1">
             <div className="flex items-center gap-2 mb-1">
-                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${getStatusColor(objective.status)}`}>
-                    {objective.status}
+                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${getStatusColor(getEffectiveStatus(objective.status, objective.id, false))}`}>
+                    {getEffectiveStatus(objective.status, objective.id, false)}
                 </span>
                 <span className="text-xs text-text-tertiary">{objective.dueDate}</span>
             </div>
@@ -79,15 +107,21 @@ const ObjectiveCard: React.FC<{
         {keyResults.map(kr => {
            const krProgress = Math.min(Math.round((kr.current / kr.target) * 100), 100);
            return (
-            <div key={kr.id} className="flex items-center gap-3 cursor-pointer group" onClick={(e) => { e.stopPropagation(); onEdit('keyResult', kr.id, objective.id); }}>
-                <div className={`h-1.5 w-1.5 rounded-full shrink-0 ${kr.status === 'On Track' ? 'bg-green-500' : kr.status === 'At Risk' ? 'bg-amber-500' : 'bg-red-500'}`}></div>
+            <div key={kr.id} className="flex items-center gap-3 cursor-pointer group" onClick={(e) => { e.stopPropagation(); onKeyResultClick(kr.id); }}>
+                <div className={`h-1.5 w-1.5 rounded-full shrink-0 ${(() => {
+                  const effectiveStatus = getEffectiveStatus(kr.status, kr.id, true);
+                  return effectiveStatus === 'On Track' ? 'bg-green-500' : effectiveStatus === 'At Risk' ? 'bg-amber-500' : effectiveStatus === 'No status' ? 'bg-gray-400' : 'bg-red-500';
+                })()}`}></div>
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
                         <span className="text-sm font-medium text-text-main truncate group-hover:text-primary transition-colors">{kr.title}</span>
                         <span className="text-xs font-bold text-text-tertiary">{krProgress}%</span>
                     </div>
                     <div className="h-1.5 w-full bg-gray-50 rounded-full overflow-hidden">
-                         <div className={`h-full rounded-full ${kr.status === 'On Track' ? 'bg-green-400' : 'bg-gray-400'} opacity-70`} style={{width: `${krProgress}%`}}></div>
+                         <div className={`h-full rounded-full ${(() => {
+                           const effectiveStatus = getEffectiveStatus(kr.status, kr.id, true);
+                           return effectiveStatus === 'On Track' ? 'bg-green-400' : effectiveStatus === 'No status' ? 'bg-gray-400' : 'bg-gray-400';
+                         })()} opacity-70`} style={{width: `${krProgress}%`}}></div>
                     </div>
                 </div>
             </div>
@@ -102,6 +136,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
   const [mode, setMode] = useState<'personal' | 'professional'>('professional');
   const { tasks, habits, objectives, keyResults, lifeAreas, updateTask, deleteTask, deleteCompletedTasks, userProfile, showCategory, quickActions } = useData();
   const [removingTasks, setRemovingTasks] = useState<Set<string>>(new Set());
+  const [showAddObjectiveModal, setShowAddObjectiveModal] = useState(false);
+  const [selectedKeyResultId, setSelectedKeyResultId] = useState<string | null>(null);
   const timeoutRefs = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const animationTimeoutRefs = useRef<Map<string, NodeJS.Timeout>>(new Map());
 
@@ -227,7 +263,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
         <div className="max-w-6xl mx-auto">
         <div className="flex items-baseline justify-between mb-4">
           <h3 className="text-text-main text-lg font-bold tracking-tight">Objectives & Key Results</h3>
-          <button className="text-primary text-sm font-medium hover:opacity-80 transition-opacity" onClick={() => onEdit('objective')}>
+          <button className="text-primary text-sm font-medium hover:opacity-80 transition-opacity" onClick={() => setShowAddObjectiveModal(true)}>
             + Add Goal
           </button>
         </div>
@@ -235,7 +271,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
         {filteredObjectives.length === 0 && (
             <div className="p-8 border-2 border-dashed border-slate-200 rounded-2xl text-center">
                 <p className="text-text-tertiary text-sm mb-2">No objectives defined for {mode}.</p>
-                <button onClick={() => onEdit('objective')} className="text-primary font-bold text-sm">Create One</button>
+                <button onClick={() => setShowAddObjectiveModal(true)} className="text-primary font-bold text-sm">Create One</button>
             </div>
         )}
 
@@ -247,6 +283,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
                 onView={() => onViewObjective(obj.id)}
                 onEdit={onEdit}
                 onAddKR={() => onEdit('keyResult', undefined, obj.id)}
+                onKeyResultClick={(krId) => setSelectedKeyResultId(krId)}
             />
         ))}
         </div>
@@ -439,6 +476,107 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
           )}
         </div>
       </section>
+
+      {/* Add Objective Modal */}
+      {showAddObjectiveModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-end justify-center animate-fade-in">
+          <div className="w-full max-w-md bg-background rounded-t-3xl shadow-2xl animate-fade-in-up max-h-[80vh] flex flex-col">
+            <div className="sticky top-0 bg-background border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-text-main">Add Objective</h3>
+              <button 
+                onClick={() => setShowAddObjectiveModal(false)}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <span className="material-symbols-outlined text-text-tertiary">close</span>
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto px-6 py-4">
+              {/* Create New Objective */}
+              <button
+                onClick={() => {
+                  setShowAddObjectiveModal(false);
+                  onEdit('objective');
+                }}
+                className="w-full mb-3 p-4 rounded-xl bg-white border-2 border-gray-200 hover:border-primary/30 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+              >
+                <span className="material-symbols-outlined text-text-main">add</span>
+                <span className="font-semibold text-text-main">Create New Objective</span>
+              </button>
+              
+              {/* Create from Template */}
+              <button
+                onClick={() => {
+                  setShowAddObjectiveModal(false);
+                  onNavigate && onNavigate(View.GOAL_PLANS);
+                }}
+                className="w-full mb-4 p-4 rounded-xl bg-primary/10 border-2 border-primary/30 hover:bg-primary/20 transition-colors flex items-center justify-center gap-2"
+              >
+                <span className="material-symbols-outlined text-primary">auto_awesome</span>
+                <span className="font-semibold text-primary">Create Objective from Template</span>
+              </button>
+              
+              {objectives.length > 0 && (
+                <>
+                  <div className="mb-3">
+                    <h4 className="text-sm font-bold text-text-tertiary uppercase tracking-wider">Select Existing Objective</h4>
+                  </div>
+                  <div className="space-y-2">
+                    {objectives.map(obj => (
+                      <button
+                        key={obj.id}
+                        onClick={() => {
+                          setShowAddObjectiveModal(false);
+                          onEdit('objective', obj.id);
+                        }}
+                        className="w-full p-4 rounded-xl bg-white border-2 border-gray-100 hover:border-primary/30 hover:bg-gray-50 transition-colors text-left"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <h5 className="font-semibold text-text-main mb-1">{obj.title}</h5>
+                            {obj.description && (
+                              <p className="text-sm text-text-tertiary line-clamp-1">{obj.description}</p>
+                            )}
+                          </div>
+                          <span className="material-symbols-outlined text-text-tertiary ml-2">chevron_right</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+              
+              {objectives.length === 0 && (
+                <div className="text-center py-8">
+                  <span className="material-symbols-outlined text-4xl text-text-tertiary mb-2">flag</span>
+                  <p className="text-sm text-text-tertiary">No objectives available</p>
+                  <p className="text-xs text-text-tertiary mt-1">Create a new objective to get started</p>
+                </div>
+              )}
+            </div>
+            
+            <div className="sticky bottom-0 bg-background border-t border-gray-200 px-6 py-4">
+              <button 
+                onClick={() => setShowAddObjectiveModal(false)}
+                className="w-full py-3 bg-gray-100 text-text-main font-bold rounded-xl hover:bg-gray-200"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Key Result Status View */}
+      {selectedKeyResultId && (() => {
+        const kr = keyResults.find(k => k.id === selectedKeyResultId);
+        return kr ? (
+          <KeyResultStatusView 
+            keyResult={kr} 
+            onClose={() => setSelectedKeyResultId(null)} 
+          />
+        ) : null;
+      })()}
     </div>
   );
 };

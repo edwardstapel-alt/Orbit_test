@@ -15,7 +15,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack, onNavi
   const toggleDarkMode = () => setDarkMode(!darkMode);
 
   const handleNav = (item: string) => {
-    alert(`Navigating to ${item}...`);
+    // Navigation placeholder - implement actual navigation if needed
   };
 
   const handleUnlink = async () => {

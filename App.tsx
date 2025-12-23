@@ -32,6 +32,7 @@ import { HabitTemplates } from './views/HabitTemplates';
 import { Habits } from './views/Habits';
 import { TasksOverview } from './views/TasksOverview';
 import { TemplateLibrary } from './views/TemplateLibrary';
+import { GoalPlans } from './views/GoalPlans';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<View>(View.DASHBOARD);
@@ -126,9 +127,9 @@ export default function App() {
     setSelectedFriend(friend);
   };
 
-  const [editorContext, setEditorContext] = useState<{ objectiveId?: string; lifeAreaId?: string } | null>(null);
+  const [editorContext, setEditorContext] = useState<{ objectiveId?: string; lifeAreaId?: string; fromTemplate?: boolean } | null>(null);
 
-  const openEditor = (type: EntityType, id?: string, parent?: string, context?: { objectiveId?: string; lifeAreaId?: string }) => {
+  const openEditor = (type: EntityType, id?: string, parent?: string, context?: { objectiveId?: string; lifeAreaId?: string; fromTemplate?: boolean }) => {
       setEditorType(type);
       setEditingId(id);
       setParentId(parent);
@@ -361,6 +362,12 @@ export default function App() {
                   onEdit={openEditor}
                   onBack={navigateBack}
                />;
+      case View.GOAL_PLANS:
+        return <GoalPlans 
+                  onEdit={openEditor}
+                  onNavigate={navigateTo}
+                  onBack={navigateBack}
+               />;
       case View.HABITS:
         return <Habits 
                   onNavigate={(view, habitId?) => {
@@ -427,6 +434,7 @@ export default function App() {
           parentId={parentId}
           contextObjectiveId={editorContext?.objectiveId}
           contextLifeAreaId={editorContext?.lifeAreaId}
+          fromTemplate={editorContext?.fromTemplate}
           onClose={closeEditor}
           onNavigate={(view, objectiveId?, lifeAreaId?) => {
             if (objectiveId) {
