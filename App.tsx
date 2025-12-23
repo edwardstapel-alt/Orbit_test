@@ -33,6 +33,10 @@ import { Habits } from './views/Habits';
 import { TasksOverview } from './views/TasksOverview';
 import { TemplateLibrary } from './views/TemplateLibrary';
 import { GoalPlans } from './views/GoalPlans';
+import { WeeklyReview } from './views/WeeklyReview';
+import { MonthlyReview } from './views/MonthlyReview';
+import { Retrospective } from './views/Retrospective';
+import { ReviewsOverview } from './views/ReviewsOverview';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<View>(View.DASHBOARD);
@@ -331,6 +335,14 @@ export default function App() {
                   }
                 }}
                 onAddKR={() => openEditor('keyResult', undefined, selectedObjectiveId)}
+                onNavigate={(view, objectiveId?) => {
+                  if (objectiveId) {
+                    setSelectedObjectiveId(objectiveId);
+                    navigateTo(View.OBJECTIVE_DETAIL);
+                  } else {
+                    navigateTo(view);
+                  }
+                }}
             />
         );
       case View.GOAL_TIMELINE:
@@ -383,6 +395,59 @@ export default function App() {
                   onProfileClick={openProfile}
                   onBack={navigateBack}
                />;
+      case View.WEEKLY_REVIEW:
+        return <WeeklyReview 
+                  onBack={navigateBack}
+                  onNavigate={navigateTo}
+                  onMenuClick={openMenu}
+                  onProfileClick={openProfile}
+               />;
+      case View.MONTHLY_REVIEW:
+        return <MonthlyReview 
+                  onBack={navigateBack}
+                  onNavigate={navigateTo}
+                  onMenuClick={openMenu}
+                  onProfileClick={openProfile}
+               />;
+      case View.RETROSPECTIVE:
+        // Get objectiveId from localStorage if not in selectedObjectiveId
+        const retrospectiveObjectiveId = selectedObjectiveId || (() => {
+          const stored = localStorage.getItem('orbit_retrospective_objectiveId');
+          if (stored) {
+            const id = stored;
+            localStorage.removeItem('orbit_retrospective_objectiveId');
+            return id;
+          }
+          return undefined;
+        })();
+        return <Retrospective 
+                  objectiveId={retrospectiveObjectiveId}
+                  onBack={navigateBack}
+                  onNavigate={(view, objectiveId?) => {
+                    if (objectiveId) {
+                      setSelectedObjectiveId(objectiveId);
+                      navigateTo(View.OBJECTIVE_DETAIL);
+                    } else {
+                      navigateTo(view);
+                    }
+                  }}
+                  onMenuClick={openMenu}
+                  onProfileClick={openProfile}
+               />;
+      case View.REVIEWS_OVERVIEW:
+        return <ReviewsOverview 
+                  onBack={navigateBack}
+                  onNavigate={(view, objectiveId?) => {
+                    if (objectiveId) {
+                      setSelectedObjectiveId(objectiveId);
+                      navigateTo(View.OBJECTIVE_DETAIL);
+                    } else {
+                      navigateTo(view);
+                    }
+                  }}
+                  onMenuClick={openMenu}
+                  onProfileClick={openProfile}
+               />;
       default:
         return <Dashboard 
                 onNavigate={navigateTo} 
@@ -409,7 +474,11 @@ export default function App() {
     currentView !== View.MAP &&
     currentView !== View.EDITOR &&
     currentView !== View.RELATIONSHIPS &&
-    currentView !== View.FIREBASE_AUTH; 
+    currentView !== View.FIREBASE_AUTH &&
+    currentView !== View.WEEKLY_REVIEW &&
+    currentView !== View.MONTHLY_REVIEW &&
+    currentView !== View.RETROSPECTIVE &&
+    currentView !== View.REVIEWS_OVERVIEW; 
 
   return (
     <DataProvider>

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import { Task, Habit, Friend, Objective, KeyResult, Place, TeamMember, DataContextType, UserProfile, LifeArea, Vision, TimeSlot, DayPart, StatusUpdate, Conflict, ConflictResolution, ConflictResolutionConfig, Reminder, Notification, NotificationSettings, EntityType, TaskTemplate, ObjectiveTemplate, QuickAction, View } from '../types';
+import { Task, Habit, Friend, Objective, KeyResult, Place, TeamMember, DataContextType, UserProfile, LifeArea, Vision, TimeSlot, DayPart, StatusUpdate, Conflict, ConflictResolution, ConflictResolutionConfig, Reminder, Notification, NotificationSettings, EntityType, TaskTemplate, ObjectiveTemplate, QuickAction, View, Review, Retrospective, ReviewInsight, ActionPlanProgress } from '../types';
 import { syncService, DataContextCallbacks } from '../utils/syncService';
 import { importGoogleTasks, detectDuplicateAppTasks, mergeAppTasks, getAccessToken } from '../utils/googleSync';
 import { recordHabitCompletion, recordHabitMiss } from '../utils/habitHistory';
@@ -226,6 +226,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>(() => loadData('orbit_timeSlots', []));
   const [dayParts, setDayParts] = useState<DayPart[]>(() => loadData('orbit_dayParts', defaultDayParts));
   const [statusUpdates, setStatusUpdates] = useState<StatusUpdate[]>(() => loadData('orbit_statusUpdates', []));
+
+  // Planning & Review state
+  const [reviews, setReviews] = useState<Review[]>(() => loadData('orbit_reviews', []));
+  const [retrospectives, setRetrospectives] = useState<Retrospective[]>(() => loadData('orbit_retrospectives', []));
   
   // Notifications & Reminders
   const defaultNotificationSettings: NotificationSettings = {
@@ -350,6 +354,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   useEffect(() => { localStorage.setItem('orbit_timeSlots', JSON.stringify(timeSlots)); }, [timeSlots]);
   useEffect(() => { localStorage.setItem('orbit_dayParts', JSON.stringify(dayParts)); }, [dayParts]);
   useEffect(() => { localStorage.setItem('orbit_statusUpdates', JSON.stringify(statusUpdates)); }, [statusUpdates]);
+  useEffect(() => { localStorage.setItem('orbit_reviews', JSON.stringify(reviews)); }, [reviews]);
+  useEffect(() => { localStorage.setItem('orbit_retrospectives', JSON.stringify(retrospectives)); }, [retrospectives]);
   useEffect(() => { localStorage.setItem('orbit_reminders', JSON.stringify(reminders)); }, [reminders]);
   useEffect(() => { localStorage.setItem('orbit_notifications', JSON.stringify(notifications)); }, [notifications]);
   useEffect(() => { localStorage.setItem('orbit_notificationSettings', JSON.stringify(notificationSettings)); }, [notificationSettings]);
@@ -581,6 +587,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               if (syncResult.data.statusUpdates.length > 0) {
                 setStatusUpdates(prev => mergeArrays(prev, syncResult.data.statusUpdates));
               }
+              if (syncResult.data.reviews && syncResult.data.reviews.length > 0) {
+                setReviews(prev => mergeArrays(prev, syncResult.data.reviews));
+              }
+              if (syncResult.data.retrospectives && syncResult.data.retrospectives.length > 0) {
+                setRetrospectives(prev => mergeArrays(prev, syncResult.data.retrospectives));
+              }
               if (syncResult.data.userProfile) {
                 setUserProfile(prev => ({ ...prev, ...syncResult.data.userProfile }));
               }
@@ -597,6 +609,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                   timeSlots,
                   friends,
                   statusUpdates,
+                  reviews,
+                  retrospectives,
                   userProfile,
                   deletedTaskIds: deletedTaskIds.map(e => e.id) // Send as array for compatibility
                 });
@@ -732,6 +746,20 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           if (isClearingData) return;
           if (firebaseStatusUpdates.length > 0) {
             setStatusUpdates(prev => mergeArrays(prev, firebaseStatusUpdates));
+          }
+        }));
+
+        unsubscribers.push(watchFirebaseChanges('reviews', (firebaseReviews) => {
+          if (isClearingData) return;
+          if (firebaseReviews.length > 0) {
+            setReviews(prev => mergeArrays(prev, firebaseReviews));
+          }
+        }));
+
+        unsubscribers.push(watchFirebaseChanges('retrospectives', (firebaseRetrospectives) => {
+          if (isClearingData) return;
+          if (firebaseRetrospectives.length > 0) {
+            setRetrospectives(prev => mergeArrays(prev, firebaseRetrospectives));
           }
         }));
 
@@ -1010,7 +1038,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const deleteObjective = (id: string) => {
     setObjectives(objectives.filter(o => o.id !== id));
     // Cascade: Delete all key results linked to this objective
-    setKeyResults(keyResults.filter(k => k.objectiveId !== id));
+    setKeyResults(keyResults.filter(k => k.objectiveId !== id)); 
     // Cascade: Unlink all tasks linked to this objective
     setTasks(tasks.map(t => t.objectiveId === id ? { ...t, objectiveId: undefined } : t));
     // Cascade: Unlink all habits linked to this objective
@@ -1284,6 +1312,312 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return statusUpdates.filter(su => su.keyResultId === keyResultId).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   };
 
+  // Planning & Review functions
+  const addReview = (review: Review) => {
+    const existingIndex = reviews.findIndex(r => r.id === review.id);
+    if (existingIndex >= 0) {
+      updateReview(review);
+      return;
+    }
+    setReviews([...reviews, review]);
+    // Auto-sync to Firebase
+    if (isAuthenticated()) {
+      syncEntityToFirebase('reviews', review, review.id).catch(error => {
+        console.error('Error syncing review to Firebase:', error);
+      });
+    }
+  };
+
+  const updateReview = (review: Review) => {
+    setReviews(reviews.map(r => r.id === review.id ? review : r));
+    // Auto-sync to Firebase
+    if (isAuthenticated()) {
+      syncEntityToFirebase('reviews', review, review.id).catch(error => {
+        console.error('Error syncing review to Firebase:', error);
+      });
+    }
+  };
+
+  const deleteReview = (id: string) => {
+    setReviews(reviews.filter(r => r.id !== id));
+    // Auto-sync delete to Firebase
+    if (isAuthenticated()) {
+      deleteEntityFromFirebase('reviews', id).catch(error => {
+        console.error('Error deleting review from Firebase:', error);
+      });
+    }
+  };
+
+  const getReviewByDate = (date: string, type: 'weekly' | 'monthly'): Review | undefined => {
+    return reviews.find(r => r.type === type && r.date === date);
+  };
+
+  const getLatestReview = (type: 'weekly' | 'monthly'): Review | undefined => {
+    const filtered = reviews.filter(r => r.type === type);
+    if (filtered.length === 0) return undefined;
+    return filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+  };
+
+  const generateReviewInsights = useCallback((review: Review): ReviewInsight[] => {
+    const insights: ReviewInsight[] = [];
+    const now = new Date();
+    
+    // Analyze goals on track vs needing attention
+    if (review.goalsOnTrack && review.goalsNeedingAttention) {
+      const onTrackCount = review.goalsOnTrack.length;
+      const needingAttentionCount = review.goalsNeedingAttention.length;
+      const total = onTrackCount + needingAttentionCount;
+      
+      if (total > 0) {
+        const onTrackPercentage = (onTrackCount / total) * 100;
+        if (onTrackPercentage >= 75) {
+          insights.push({
+            id: `insight-${review.id}-success`,
+            type: 'success',
+            title: 'Excellent Progress',
+            description: `${onTrackPercentage.toFixed(0)}% of your goals are on track!`,
+            createdAt: now.toISOString()
+          });
+        } else if (onTrackPercentage < 50) {
+          insights.push({
+            id: `insight-${review.id}-warning`,
+            type: 'warning',
+            title: 'Needs Attention',
+            description: `${needingAttentionCount} goals need your attention. Consider adjusting your priorities.`,
+            createdAt: now.toISOString()
+          });
+        }
+      }
+    }
+    
+    // Analyze action items completion
+    if (review.actionItems && review.actionItems.length > 0) {
+      const completed = review.actionItems.filter(ai => ai.completed).length;
+      const total = review.actionItems.length;
+      const completionRate = (completed / total) * 100;
+      
+      if (completionRate === 100) {
+        insights.push({
+          id: `insight-${review.id}-action-complete`,
+          type: 'success',
+          title: 'All Action Items Completed',
+          description: 'Great job completing all your action items!',
+          createdAt: now.toISOString()
+        });
+      } else if (completionRate < 50) {
+        insights.push({
+          id: `insight-${review.id}-action-low`,
+          type: 'improvement',
+          title: 'Action Items Need Focus',
+          description: `Only ${completionRate.toFixed(0)}% of action items completed. Consider breaking them into smaller tasks.`,
+          createdAt: now.toISOString()
+        });
+      }
+    }
+    
+    return insights;
+  }, []);
+
+  const addRetrospective = (retrospective: Retrospective) => {
+    const existingIndex = retrospectives.findIndex(r => r.id === retrospective.id);
+    if (existingIndex >= 0) {
+      updateRetrospective(retrospective);
+      return;
+    }
+    setRetrospectives([...retrospectives, retrospective]);
+    // Auto-sync to Firebase
+    if (isAuthenticated()) {
+      // Clean undefined values before syncing
+      const cleanRetrospective: any = { ...retrospective };
+      // Set optional fields to null if undefined
+      if (cleanRetrospective.objectiveId === undefined) {
+        cleanRetrospective.objectiveId = null;
+      }
+      if (cleanRetrospective.keyResultId === undefined) {
+        cleanRetrospective.keyResultId = null;
+      }
+      // Remove any remaining undefined fields
+      Object.keys(cleanRetrospective).forEach(key => {
+        if (cleanRetrospective[key] === undefined) {
+          delete cleanRetrospective[key];
+        }
+      });
+      syncEntityToFirebase('retrospectives', cleanRetrospective, retrospective.id).catch(error => {
+        console.error('Error syncing retrospective to Firebase:', error);
+      });
+    }
+  };
+
+  const updateRetrospective = (retrospective: Retrospective) => {
+    setRetrospectives(retrospectives.map(r => r.id === retrospective.id ? retrospective : r));
+    // Auto-sync to Firebase
+    if (isAuthenticated()) {
+      // Clean undefined values before syncing
+      const cleanRetrospective: any = { ...retrospective };
+      // Set optional fields to null if undefined
+      if (cleanRetrospective.objectiveId === undefined) {
+        cleanRetrospective.objectiveId = null;
+      }
+      if (cleanRetrospective.keyResultId === undefined) {
+        cleanRetrospective.keyResultId = null;
+      }
+      // Remove any remaining undefined fields
+      Object.keys(cleanRetrospective).forEach(key => {
+        if (cleanRetrospective[key] === undefined) {
+          delete cleanRetrospective[key];
+        }
+      });
+      syncEntityToFirebase('retrospectives', cleanRetrospective, retrospective.id).catch(error => {
+        console.error('Error syncing retrospective to Firebase:', error);
+      });
+    }
+  };
+
+  const deleteRetrospective = (id: string) => {
+    setRetrospectives(retrospectives.filter(r => r.id !== id));
+    // Auto-sync delete to Firebase
+    if (isAuthenticated()) {
+      deleteEntityFromFirebase('retrospectives', id).catch(error => {
+        console.error('Error deleting retrospective from Firebase:', error);
+      });
+    }
+  };
+
+  const getRetrospectivesByObjective = (objectiveId: string): Retrospective[] => {
+    return retrospectives.filter(r => r.objectiveId === objectiveId).sort((a, b) => {
+      const dateA = a.date ? new Date(a.date).getTime() : new Date(a.createdAt).getTime();
+      const dateB = b.date ? new Date(b.date).getTime() : new Date(b.createdAt).getTime();
+      return dateB - dateA; // Newest first
+    });
+  };
+
+  const getRetrospectivesByKeyResult = (keyResultId: string): Retrospective[] => {
+    return retrospectives.filter(r => r.keyResultId === keyResultId).sort((a, b) => {
+      const dateA = a.date ? new Date(a.date).getTime() : new Date(a.createdAt).getTime();
+      const dateB = b.date ? new Date(b.date).getTime() : new Date(b.createdAt).getTime();
+      return dateB - dateA; // Newest first
+    });
+  };
+
+  const calculateActionPlanProgress = useCallback((objectiveId: string): ActionPlanProgress => {
+    const objective = objectives.find(o => o.id === objectiveId);
+    if (!objective) {
+      return {
+        objectiveId,
+        totalWeeks: 0,
+        completedWeeks: 0,
+        totalTasks: 0,
+        completedTasks: 0,
+        weekProgress: [],
+        overallProgress: 0
+      };
+    }
+
+    // Find template that was used to create this objective
+    const template = objectiveTemplates.find(t => {
+      // Check if objective matches template data
+      return t.objectiveData.title === objective.title || t.name === objective.title;
+    });
+
+    if (!template || !template.actionPlan) {
+      return {
+        objectiveId,
+        totalWeeks: 0,
+        completedWeeks: 0,
+        totalTasks: 0,
+        completedTasks: 0,
+        weekProgress: [],
+        overallProgress: 0
+      };
+    }
+
+    const actionPlan = template.actionPlan;
+    const totalWeeks = actionPlan.weeks.length;
+    let completedWeeks = 0;
+    let totalTasks = 0;
+    let completedTasks = 0;
+    const weekProgress: ActionPlanProgress['weekProgress'] = [];
+
+    // Get all tasks linked to this objective
+    const objectiveTasks = tasks.filter(t => t.objectiveId === objectiveId);
+
+    actionPlan.weeks.forEach(week => {
+      const weekTasks = week.tasks;
+      totalTasks += weekTasks.length;
+      let weekCompletedTasks = 0;
+
+      const weekTaskProgress = weekTasks.map(apt => {
+        // Try to find matching task
+        const matchingTask = objectiveTasks.find(t => {
+          // Check if task title matches or if task ID matches action plan task ID pattern
+          return t.title === apt.title || t.id.includes(apt.id);
+        });
+
+        const completed = matchingTask ? matchingTask.completed : false;
+        if (completed) {
+          weekCompletedTasks++;
+          completedTasks++;
+        }
+
+        return {
+          id: apt.id,
+          title: apt.title,
+          scheduledDate: apt.scheduledDate,
+          completed,
+          taskId: matchingTask?.id
+        };
+      });
+
+      const weekProgressPercent = weekTasks.length > 0 ? (weekCompletedTasks / weekTasks.length) * 100 : 0;
+      if (weekProgressPercent === 100) {
+        completedWeeks++;
+      }
+
+      weekProgress.push({
+        weekNumber: week.weekNumber,
+        weekTitle: week.title,
+        totalTasks: weekTasks.length,
+        completedTasks: weekCompletedTasks,
+        progress: weekProgressPercent,
+        tasks: weekTaskProgress
+      });
+    });
+
+    const overallProgress = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
+
+    // Find next upcoming task
+    const now = new Date();
+    let nextUpcomingTask: ActionPlanProgress['nextUpcomingTask'] | undefined;
+    for (const week of weekProgress) {
+      for (const task of week.tasks) {
+        if (!task.completed && task.scheduledDate) {
+          const taskDate = new Date(task.scheduledDate);
+          if (taskDate >= now) {
+            if (!nextUpcomingTask || new Date(task.scheduledDate) < new Date(nextUpcomingTask.scheduledDate)) {
+              nextUpcomingTask = {
+                id: task.id,
+                title: task.title,
+                scheduledDate: task.scheduledDate,
+                weekNumber: week.weekNumber
+              };
+            }
+          }
+        }
+      }
+    }
+
+    return {
+      objectiveId,
+      totalWeeks,
+      completedWeeks,
+      totalTasks,
+      completedTasks,
+      weekProgress,
+      overallProgress,
+      nextUpcomingTask
+    };
+  }, [objectives, objectiveTemplates, tasks]);
+
   // Helper functions
   const getLifeAreaById = (id: string): LifeArea | undefined => {
     return lifeAreas.find(la => la.id === id);
@@ -1437,6 +1771,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setVisions([]);
     setTimeSlots([]);
     setStatusUpdates([]);
+    setReviews([]);
+    setRetrospectives([]);
     setDeletedTaskIds([]);
     setDeletedGoogleTaskIds([]);
     // Keep dayParts as they are defaults
@@ -1456,6 +1792,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       'orbit_visions',
       'orbit_timeSlots',
       'orbit_statusUpdates',
+      'orbit_reviews',
+      'orbit_retrospectives',
       'orbit_dayParts',
       'orbit_accent',
       'orbit_darkMode',
@@ -1502,6 +1840,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setTimeSlots([]);
     setDayParts(defaultDayParts);
     setStatusUpdates([]);
+    setReviews([]);
+    setRetrospectives([]);
     setReminders([]);
     setNotifications([]);
     setNotificationSettings(defaultNotificationSettings);
@@ -1828,6 +2168,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     <DataContext.Provider value={{
       userProfile, tasks, habits, friends, objectives, keyResults, places, teamMembers, accentColor, darkMode, theme, showCategory,
       lifeAreas, visions, timeSlots, dayParts, statusUpdates,
+      reviews, retrospectives,
       reminders, notifications, notificationSettings,
       taskTemplates, objectiveTemplates, quickActions,
       deletedGoogleTaskIds, deletedTaskIds,
@@ -1844,6 +2185,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       addTimeSlot, updateTimeSlot, deleteTimeSlot,
       updateDayPart, deleteDayPart, reorderDayParts,
       addStatusUpdate, updateStatusUpdate, deleteStatusUpdate, getStatusUpdatesByKeyResult,
+      // Planning & Review
+      addReview, updateReview, deleteReview, getReviewByDate, getLatestReview, generateReviewInsights,
+      addRetrospective, updateRetrospective, deleteRetrospective, getRetrospectivesByObjective, getRetrospectivesByKeyResult, calculateActionPlanProgress,
       getLifeAreaById, getVisionByLifeArea, getObjectivesByLifeArea, getTasksByLifeArea,
       getTasksForDate, getTimeSlotsForDate, calculateLifescan, formatKeyResultValue,
       getTasksByObjective, getTasksByKeyResult, getHabitsByObjective, getHabitsByKeyResult,

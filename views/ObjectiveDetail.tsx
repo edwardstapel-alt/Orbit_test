@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { KeyResultStatusView } from './KeyResultStatusView';
+import { View } from '../types';
 
 interface ObjectiveDetailProps {
   objectiveId: string;
   onBack: () => void;
   onEdit: (type?: 'keyResult' | 'habit' | 'lifeArea', id?: string, parentId?: string, context?: { objectiveId?: string; lifeAreaId?: string }) => void;
   onAddKR: () => void;
+  onNavigate?: (view: View, objectiveId?: string) => void;
 }
 
-export const ObjectiveDetail: React.FC<ObjectiveDetailProps> = ({ objectiveId, onBack, onEdit, onAddKR }) => {
-  const { objectives, keyResults, habits, teamMembers, updateObjective, updateHabit, updateKeyResult, lifeAreas, getLifeAreaById, showCategory, formatKeyResultValue, getStatusUpdatesByKeyResult } = useData();
+export const ObjectiveDetail: React.FC<ObjectiveDetailProps> = ({ objectiveId, onBack, onEdit, onAddKR, onNavigate }) => {
+  const { objectives, keyResults, habits, teamMembers, updateObjective, updateHabit, updateKeyResult, lifeAreas, getLifeAreaById, showCategory, formatKeyResultValue, getStatusUpdatesByKeyResult, objectiveTemplates, tasks, calculateActionPlanProgress, getRetrospectivesByObjective } = useData();
   const [activeModal, setActiveModal] = useState<'owner' | 'date' | 'category' | 'lifeArea' | 'startDate' | 'endDate' | 'timelineColor' | 'linkHabit' | 'linkKeyResult' | null>(null);
   const [selectedKeyResultId, setSelectedKeyResultId] = useState<string | null>(null);
   
@@ -424,6 +426,132 @@ export const ObjectiveDetail: React.FC<ObjectiveDetailProps> = ({ objectiveId, o
             </div>
           </div>
         )}
+
+        {/* Action Plan Section */}
+        {(() => {
+          const template = objectiveTemplates.find(t => {
+            return t.objectiveData.title === objective.title || t.name === objective.title;
+          });
+          const actionPlanProgress = calculateActionPlanProgress(objectiveId);
+          
+          if (!template || !template.actionPlan || actionPlanProgress.totalWeeks === 0) {
+            return null;
+          }
+
+          return (
+            <div className="mt-6">
+              <div className="flex items-center justify-between px-1 mb-4">
+                <h3 className="text-lg font-bold text-text-main">Action Plan</h3>
+                <span className="text-xs text-text-tertiary">
+                  {actionPlanProgress.completedWeeks}/{actionPlanProgress.totalWeeks} weeks
+                </span>
+              </div>
+              <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
+                <div className="mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-semibold text-text-main">Overall Progress</span>
+                    <span className="text-xs font-bold text-text-tertiary">{Math.round(actionPlanProgress.overallProgress)}%</span>
+                  </div>
+                  <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full rounded-full bg-primary transition-all"
+                      style={{ width: `${actionPlanProgress.overallProgress}%` }}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  {actionPlanProgress.weekProgress.slice(0, 3).map(week => (
+                    <div key={week.weekNumber} className="border border-slate-100 rounded-xl p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <h4 className="text-sm font-semibold text-text-main">Week {week.weekNumber}</h4>
+                          <p className="text-xs text-text-tertiary">{week.weekTitle}</p>
+                        </div>
+                        <span className="text-xs font-bold text-text-tertiary">
+                          {week.completedTasks}/{week.totalTasks}
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full rounded-full bg-primary transition-all"
+                          style={{ width: `${week.progress}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                  {actionPlanProgress.weekProgress.length > 3 && (
+                    <p className="text-xs text-text-tertiary text-center">
+                      +{actionPlanProgress.weekProgress.length - 3} more weeks
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Retrospectives Section */}
+        {(() => {
+          const objectiveRetrospectives = getRetrospectivesByObjective(objectiveId);
+          return (
+            <div className="mt-6">
+              <div className="flex items-center justify-between px-1 mb-4">
+                <h3 className="text-lg font-bold text-text-main">Retrospectives</h3>
+                <button
+                  onClick={() => {
+                    if (onNavigate) {
+                      // Store objectiveId for retrospective view
+                      localStorage.setItem('orbit_retrospective_objectiveId', objectiveId);
+                      onNavigate(View.RETROSPECTIVE);
+                    }
+                  }}
+                  className="text-primary text-sm font-bold hover:bg-primary/5 px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  + Add Retrospective
+                </button>
+              </div>
+              {objectiveRetrospectives.length === 0 ? (
+                <div className="bg-white rounded-2xl p-6 border-2 border-dashed border-slate-200 text-center">
+                  <span className="material-symbols-outlined text-4xl text-text-tertiary mb-2 block">rate_review</span>
+                  <p className="text-sm text-text-tertiary">No retrospectives yet</p>
+                  <p className="text-xs text-text-tertiary mt-1">Add a retrospective to reflect on this objective</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {objectiveRetrospectives.map(retro => (
+                    <div
+                      key={retro.id}
+                      className="bg-white rounded-xl p-3 shadow-sm border border-slate-100 cursor-pointer hover:shadow-md hover:border-primary/20 transition-all"
+                      onClick={() => {
+                        if (onNavigate) {
+                          localStorage.setItem('orbit_retrospective_objectiveId', objectiveId);
+                          onNavigate(View.RETROSPECTIVE);
+                        }
+                      }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <p className="text-sm font-semibold text-text-main">Retrospective</p>
+                          <p className="text-xs text-text-tertiary mt-1">
+                            {new Date(retro.date || retro.createdAt).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </p>
+                          <div className="flex gap-3 mt-2 text-xs text-text-tertiary">
+                            <span>Start: {retro.start?.length || 0}</span>
+                            <span>Stop: {retro.stop?.length || 0}</span>
+                            <span>Continue: {retro.continue?.length || 0}</span>
+                          </div>
+                        </div>
+                        {retro.completed && (
+                          <span className="material-symbols-outlined text-green-500 text-sm">check_circle</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </main>
 
       {/* Status Update View */}

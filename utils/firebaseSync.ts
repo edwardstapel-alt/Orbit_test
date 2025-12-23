@@ -16,7 +16,7 @@ import {
   deleteDoc
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { Task, Habit, Objective, KeyResult, LifeArea, TimeSlot, Friend, UserProfile, StatusUpdate } from '../types';
+import { Task, Habit, Objective, KeyResult, LifeArea, TimeSlot, Friend, UserProfile, StatusUpdate, Review, Retrospective } from '../types';
 
 // Helper to get current user ID
 const getUserId = (): string | null => {
@@ -204,6 +204,8 @@ export const syncAllToFirebase = async (
     timeSlots: TimeSlot[];
     friends: Friend[];
     statusUpdates: StatusUpdate[];
+    reviews?: Review[];
+    retrospectives?: Retrospective[];
     userProfile: UserProfile;
     deletedTaskIds?: string[];
   }
@@ -221,6 +223,8 @@ export const syncAllToFirebase = async (
     { name: 'timeSlots', data: data.timeSlots },
     { name: 'friends', data: data.friends },
     { name: 'statusUpdates', data: data.statusUpdates },
+    { name: 'reviews', data: data.reviews || [] },
+    { name: 'retrospectives', data: data.retrospectives || [] },
   ];
 
   for (const collection of collections) {
@@ -263,6 +267,8 @@ export const syncAllFromFirebase = async (): Promise<{
     timeSlots: TimeSlot[];
     friends: Friend[];
     statusUpdates: StatusUpdate[];
+    reviews?: Review[];
+    retrospectives?: Retrospective[];
     userProfile: UserProfile | null;
     deletedTaskIds?: { ids: string[] };
   };
@@ -278,6 +284,8 @@ export const syncAllFromFirebase = async (): Promise<{
       'timeSlots',
       'friends',
       'statusUpdates',
+      'reviews',
+      'retrospectives',
     ];
 
     const data: any = {};

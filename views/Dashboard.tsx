@@ -134,7 +134,7 @@ const ObjectiveCard: React.FC<{
 
 export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onViewObjective, onViewLifeArea, onMenuClick, onProfileClick }) => {
   const [mode, setMode] = useState<'personal' | 'professional'>('professional');
-  const { tasks, habits, objectives, keyResults, lifeAreas, updateTask, deleteTask, deleteCompletedTasks, userProfile, showCategory, quickActions } = useData();
+  const { tasks, habits, objectives, keyResults, lifeAreas, updateTask, deleteTask, deleteCompletedTasks, userProfile, showCategory, quickActions, reviews, getLatestReview } = useData();
   const [removingTasks, setRemovingTasks] = useState<Set<string>>(new Set());
   const [showAddObjectiveModal, setShowAddObjectiveModal] = useState(false);
   const [selectedKeyResultId, setSelectedKeyResultId] = useState<string | null>(null);
@@ -217,6 +217,70 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
         onMenuClick={onMenuClick}
         onProfileClick={onProfileClick} 
       />
+
+      {/* Review Reminders */}
+      {(() => {
+        const latestWeekly = getLatestReview('weekly');
+        const latestMonthly = getLatestReview('monthly');
+        const today = new Date();
+        const dayOfWeek = today.getDay();
+        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+        const isEndOfMonth = today.getDate() >= 28;
+        
+        // Check if weekly review is due (every Sunday/Saturday)
+        const weeklyReviewDue = isWeekend && (!latestWeekly || (() => {
+          const lastReviewDate = new Date(latestWeekly.date);
+          const daysSince = Math.floor((today.getTime() - lastReviewDate.getTime()) / (1000 * 60 * 60 * 24));
+          return daysSince >= 7;
+        })());
+        
+        // Check if monthly review is due (end of month)
+        const monthlyReviewDue = isEndOfMonth && (!latestMonthly || (() => {
+          const lastReviewDate = new Date(latestMonthly.date);
+          return lastReviewDate.getMonth() !== today.getMonth() || lastReviewDate.getFullYear() !== today.getFullYear();
+        })());
+        
+        if (!weeklyReviewDue && !monthlyReviewDue) return null;
+        
+        return (
+          <section className="px-6 md:px-12 lg:px-16 mt-4">
+            <div className="max-w-6xl mx-auto">
+              <div className="bg-primary/10 border-2 border-primary/30 rounded-2xl p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <h3 className="text-sm font-bold text-primary mb-1">Review Time!</h3>
+                    <p className="text-xs text-text-secondary">
+                      {weeklyReviewDue && monthlyReviewDue 
+                        ? 'Weekly and monthly reviews are due'
+                        : weeklyReviewDue 
+                        ? 'Weekly review is due'
+                        : 'Monthly review is due'}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    {weeklyReviewDue && (
+                      <button
+                        onClick={() => onNavigate(View.WEEKLY_REVIEW)}
+                        className="px-3 py-1.5 bg-primary text-white text-xs font-bold rounded-lg hover:bg-primary-soft transition-colors"
+                      >
+                        Weekly
+                      </button>
+                    )}
+                    {monthlyReviewDue && (
+                      <button
+                        onClick={() => onNavigate(View.MONTHLY_REVIEW)}
+                        className="px-3 py-1.5 bg-primary text-white text-xs font-bold rounded-lg hover:bg-primary-soft transition-colors"
+                      >
+                        Monthly
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        );
+      })()}
 
       {/* Quick Actions Panel */}
       {quickActions.length > 0 && (

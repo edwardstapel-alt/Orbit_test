@@ -26,7 +26,9 @@ export const Today: React.FC<TodayProps> = ({ onEdit, onNavigate, onMenuClick, o
     updateHabit,
     updateKeyResult,
     getTimeSlotsForDate,
-    userProfile
+    userProfile,
+    reviews,
+    getLatestReview
   } = useData();
 
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -290,6 +292,44 @@ export const Today: React.FC<TodayProps> = ({ onEdit, onNavigate, onMenuClick, o
           </button>
         </div>
       </div>
+
+      {/* Review Reminder */}
+      {(() => {
+        const latestWeekly = getLatestReview('weekly');
+        const today = new Date();
+        const dayOfWeek = today.getDay();
+        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+        
+        const weeklyReviewDue = isWeekend && (!latestWeekly || (() => {
+          const lastReviewDate = new Date(latestWeekly.date);
+          const daysSince = Math.floor((today.getTime() - lastReviewDate.getTime()) / (1000 * 60 * 60 * 24));
+          return daysSince >= 7;
+        })());
+        
+        if (!weeklyReviewDue) return null;
+        
+        return (
+          <div className="px-6 mb-4">
+            <div className="bg-primary/10 border-2 border-primary/30 rounded-xl p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-primary text-lg">rate_review</span>
+                  <div>
+                    <p className="text-xs font-bold text-primary">Weekly Review Due</p>
+                    <p className="text-[10px] text-text-secondary">Time to reflect on your week</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => onNavigate(View.WEEKLY_REVIEW)}
+                  className="px-3 py-1.5 bg-primary text-white text-xs font-bold rounded-lg hover:bg-primary-soft transition-colors"
+                >
+                  Start Review
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <main className="flex-1 overflow-y-auto no-scrollbar pb-32 px-6 pt-6">
         {/* Entity Filter - Compact Icon Toggles */}

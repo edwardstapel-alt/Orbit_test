@@ -29,7 +29,11 @@ export enum View {
   HABIT_TEMPLATES = 'HABIT_TEMPLATES', // Habit Template Library
   TEMPLATE_LIBRARY = 'TEMPLATE_LIBRARY', // Template Library (Tasks & Habits)
   GOAL_PLANS = 'GOAL_PLANS', // Goal Plans / Objective Templates
-  HABITS = 'HABITS' // Habits Overview Page
+  HABITS = 'HABITS', // Habits Overview Page
+  WEEKLY_REVIEW = 'WEEKLY_REVIEW', // Weekly Review
+  MONTHLY_REVIEW = 'MONTHLY_REVIEW', // Monthly Review
+  REVIEWS_OVERVIEW = 'REVIEWS_OVERVIEW', // Reviews Overview
+  RETROSPECTIVE = 'RETROSPECTIVE' // Retrospective
 }
 
 export type EntityType = 'task' | 'habit' | 'friend' | 'objective' | 'keyResult' | 'place' | 'lifeArea' | 'vision' | 'timeSlot';
@@ -503,6 +507,118 @@ export interface NotificationSettings {
   };
 }
 
+// Planning & Review Types
+export interface ReviewQuestion {
+  id: string;
+  question: string;
+  type: 'text' | 'number' | 'select' | 'multi-select';
+  required: boolean;
+  order: number;
+  options?: string[]; // For select/multi-select types
+}
+
+export interface ReviewInsight {
+  id: string;
+  type: 'success' | 'warning' | 'improvement' | 'trend';
+  title: string;
+  description: string;
+  data?: any; // Additional data for the insight
+  createdAt: string;
+}
+
+export interface Review {
+  id: string;
+  type: 'weekly' | 'monthly';
+  date: string; // YYYY-MM-DD - start date of week/month
+  endDate: string; // YYYY-MM-DD - end date of week/month
+  // Answers to structured questions
+  answers: {
+    [questionId: string]: string | number | string[]; // Answer value(s)
+  };
+  // Reflection text
+  achievements?: string; // What did I achieve?
+  goalsOnTrack?: string[]; // Objective/key result IDs that are on track
+  goalsNeedingAttention?: string[]; // Objective/key result IDs needing attention
+  lessons?: string; // What did I learn?
+  nextWeekChanges?: string; // What will I do differently next week?
+  // Monthly specific
+  biggestSuccesses?: string; // Biggest successes this month
+  goalsNotMet?: string; // Goals not met and why
+  keyInsights?: string; // Key insights
+  goalsToAdjust?: string[]; // Objective/key result IDs to adjust
+  nextMonthPriorities?: string; // Priorities for next month
+  // Action items
+  actionItems?: Array<{
+    id: string;
+    title: string;
+    dueDate?: string; // YYYY-MM-DD
+    linkedObjectiveId?: string;
+    linkedKeyResultId?: string;
+    completed: boolean;
+  }>;
+  // Insights (auto-generated)
+  insights?: ReviewInsight[];
+  // Metadata
+  createdAt: string; // ISO timestamp
+  updatedAt: string; // ISO timestamp
+  completed: boolean; // Whether review is completed
+}
+
+export interface Retrospective {
+  id: string;
+  objectiveId?: string; // Link to objective (optional)
+  keyResultId?: string; // Link to key result (optional)
+  date: string; // YYYY-MM-DD - date of the retrospective
+  // Start/Stop/Continue format
+  start: string[]; // What should I start doing?
+  stop: string[]; // What should I stop doing?
+  continue: string[]; // What works well and should I continue?
+  // Lessons learned
+  lessonsLearned?: string; // What did I learn?
+  whatWouldIDoDifferently?: string; // What would I do differently?
+  biggestChallenges?: string; // What were the biggest challenges?
+  // Action items
+  actionItems?: Array<{
+    id: string;
+    title: string;
+    dueDate?: string; // YYYY-MM-DD
+    completed: boolean;
+  }>;
+  // Metadata
+  createdAt: string; // ISO timestamp
+  updatedAt: string; // ISO timestamp
+  completed: boolean; // Whether retrospective is completed
+}
+
+export interface ActionPlanProgress {
+  objectiveId: string;
+  totalWeeks: number;
+  completedWeeks: number;
+  totalTasks: number;
+  completedTasks: number;
+  weekProgress: Array<{
+    weekNumber: number;
+    weekTitle: string;
+    totalTasks: number;
+    completedTasks: number;
+    progress: number; // 0-100
+    tasks: Array<{
+      id: string;
+      title: string;
+      scheduledDate?: string;
+      completed: boolean;
+      taskId?: string; // Link to actual Task if created
+    }>;
+  }>;
+  overallProgress: number; // 0-100
+  nextUpcomingTask?: {
+    id: string;
+    title: string;
+    scheduledDate: string;
+    weekNumber: number;
+  };
+}
+
 export interface DataContextType {
   userProfile: UserProfile;
   tasks: Task[];
@@ -663,4 +779,20 @@ export interface DataContextType {
   importTimeSlotsFromCalendar: (calendarIds?: string[]) => Promise<{ imported: number; updated: number; conflicts: number }>;
   startAutoImport: (intervalMinutes?: number) => Promise<void>;
   stopAutoImport: () => void;
+  
+  // Planning & Review functions
+  reviews: Review[];
+  retrospectives: Retrospective[];
+  addReview: (review: Review) => void;
+  updateReview: (review: Review) => void;
+  deleteReview: (id: string) => void;
+  getReviewByDate: (date: string, type: 'weekly' | 'monthly') => Review | undefined;
+  getLatestReview: (type: 'weekly' | 'monthly') => Review | undefined;
+  generateReviewInsights: (review: Review) => ReviewInsight[];
+  addRetrospective: (retrospective: Retrospective) => void;
+  updateRetrospective: (retrospective: Retrospective) => void;
+  deleteRetrospective: (id: string) => void;
+  getRetrospectivesByObjective: (objectiveId: string) => Retrospective[];
+  getRetrospectivesByKeyResult: (keyResultId: string) => Retrospective[];
+  calculateActionPlanProgress: (objectiveId: string) => ActionPlanProgress;
 }

@@ -512,6 +512,79 @@
         opacity: 1 !important;
       }
       
+      /* Light theme - Fix white text on light backgrounds */
+      /* Ensure text-white only works on dark backgrounds (bg-primary, bg-red-500, etc.) */
+      /* Override when text-white is used with light backgrounds */
+      .bg-white.text-white,
+      .bg-gray-50.text-white,
+      .bg-gray-100.text-white,
+      .bg-slate-50.text-white,
+      .bg-slate-100.text-white {
+        color: var(--text-main) !important;
+      }
+      
+      /* Light theme - But preserve text-white on dark backgrounds (higher specificity) */
+      button.bg-primary.text-white,
+      .bg-primary.text-white,
+      button.bg-red-500.text-white,
+      .bg-red-500.text-white,
+      button.bg-green-500.text-white,
+      .bg-green-500.text-white,
+      button.bg-blue-500.text-white,
+      .bg-blue-500.text-white,
+      button.bg-blue-600.text-white,
+      .bg-blue-600.text-white,
+      button.bg-amber-500.text-white,
+      .bg-amber-500.text-white,
+      button.bg-purple-500.text-white,
+      .bg-purple-500.text-white,
+      button.bg-pink-500.text-white,
+      .bg-pink-500.text-white,
+      button.bg-teal-500.text-white,
+      .bg-teal-500.text-white,
+      button.bg-teal-600.text-white,
+      .bg-teal-600.text-white,
+      button.bg-indigo-500.text-white,
+      .bg-indigo-500.text-white {
+        color: #FFFFFF !important;
+      }
+      
+      /* Light theme - Buttons with bg-gray-100 should use text-text-tertiary */
+      button.bg-gray-100 {
+        color: var(--text-tertiary) !important;
+      }
+      
+      button.bg-gray-100:hover {
+        color: var(--text-secondary) !important;
+      }
+      
+      /* Dark/Black theme - text-white should work on light backgrounds */
+      .dark .bg-white.text-white,
+      .dark .bg-gray-50.text-white,
+      .dark .bg-gray-100.text-white,
+      .dark .bg-slate-50.text-white,
+      .dark .bg-slate-100.text-white,
+      .black .bg-white.text-white,
+      .black .bg-gray-50.text-white,
+      .black .bg-gray-100.text-white,
+      .black .bg-slate-50.text-white,
+      .black .bg-slate-100.text-white {
+        color: #FFFFFF !important;
+      }
+      
+      /* Dark/Black theme - Buttons with bg-gray-100 should have light text */
+      .dark button.bg-gray-100,
+      .black button.bg-gray-100 {
+        color: var(--text-tertiary) !important;
+        background-color: rgba(255, 255, 255, 0.1) !important;
+      }
+      
+      .dark button.bg-gray-100:hover,
+      .black button.bg-gray-100:hover {
+        color: var(--text-secondary) !important;
+        background-color: rgba(255, 255, 255, 0.15) !important;
+      }
+      
       input[type=range]:focus {
         outline: none;
       }
