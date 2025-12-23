@@ -41,14 +41,12 @@
       // Prevent pull-to-refresh on mobile (only when at top and scrolling down)
       let touchStartY = 0;
       let touchStartScrollY = 0;
-      let isScrolling = false;
       
       document.addEventListener('touchstart', function(e) {
         touchStartY = e.touches[0].clientY;
         // Check scroll position of the main scroll container or window
         const scrollContainer = document.querySelector('.overflow-y-auto') || document.documentElement;
         touchStartScrollY = scrollContainer.scrollTop || window.scrollY || 0;
-        isScrolling = false;
       }, { passive: true });
       
       document.addEventListener('touchmove', function(e) {
@@ -57,9 +55,13 @@
         const scrollContainer = document.querySelector('.overflow-y-auto') || document.documentElement;
         const currentScrollY = scrollContainer.scrollTop || window.scrollY || 0;
         
-        // Allow scrolling if user is scrolling up or if already scrolled down
-        if (touchDiff < 0 || currentScrollY > 0 || touchStartScrollY > 0) {
-          isScrolling = true;
+        // Always allow scrolling up (negative touchDiff)
+        if (touchDiff < 0) {
+          return; // Allow normal scrolling up
+        }
+        
+        // Allow scrolling if already scrolled down from start
+        if (touchStartScrollY > 0 || currentScrollY > 0) {
           return; // Allow normal scrolling
         }
         
@@ -67,8 +69,8 @@
         // 1. Scrolling down (touchDiff > 0)
         // 2. Already at the top (currentScrollY === 0)
         // 3. Started at the top (touchStartScrollY === 0)
-        // 4. Not already scrolling
-        if (touchDiff > 0 && currentScrollY === 0 && touchStartScrollY === 0 && !isScrolling) {
+        // 4. Significant downward movement (more than 10px to avoid accidental blocks)
+        if (touchDiff > 10 && currentScrollY === 0 && touchStartScrollY === 0) {
           e.preventDefault();
         }
       }, { passive: false });
@@ -131,9 +133,17 @@
         /* Allow scrolling */
         overflow-x: hidden;
         overflow-y: auto;
+        /* Enable smooth scrolling */
+        -webkit-overflow-scrolling: touch;
         /* Hide scrollbar for Chrome, Safari and Opera */
         -ms-overflow-style: none;  /* IE and Edge */
         scrollbar-width: none;  /* Firefox */
+      }
+      
+      /* Ensure scroll containers can scroll */
+      .overflow-y-auto {
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-y: contain;
       }
       body::-webkit-scrollbar {
         display: none;
