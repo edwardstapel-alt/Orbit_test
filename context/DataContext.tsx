@@ -796,7 +796,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       updateTask(item);
       return;
     }
-    setTasks([...tasks, item]);
+    // Add createdAt timestamp if not present
+    const taskWithTimestamp: Task = {
+      ...item,
+      createdAt: item.createdAt || new Date().toISOString()
+    };
+    setTasks([...tasks, taskWithTimestamp]);
     // Auto-sync to Google Tasks
     syncService.queueSync('task', 'create', item.id, item);
     // Auto-sync to Firebase (async, fire and forget)

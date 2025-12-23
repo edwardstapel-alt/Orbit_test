@@ -174,6 +174,8 @@ export interface Task {
     parentTaskId?: string; // ID van parent recurring task
     instanceNumber?: number; // Voor tracking welke instance dit is
   };
+  // Metadata
+  createdAt?: string; // ISO timestamp wanneer taak is aangemaakt
 }
 
 export interface Habit {

@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { TopNav } from '../components/TopNav';
 import { View } from '../types';
+import { LineGraph, LineGraphDataPoint } from '../components/LineGraph';
 
 interface StatisticsProps {
   onNavigate: (view: View) => void;
@@ -35,6 +36,39 @@ function getLastNDays(n: number): string[] {
     dates.push(current.toISOString().split('T')[0]);
   }
   return dates;
+}
+
+// Transform tasks to graph data (grouped by creation date)
+function getTasksCreatedPerDay(tasks: any[], days: number = 30): LineGraphDataPoint[] {
+  const lastNDays = getLastNDays(days);
+  const taskCounts: { [date: string]: number } = {};
+  
+  // Initialize all dates with 0
+  lastNDays.forEach(date => {
+    taskCounts[date] = 0;
+  });
+  
+  // Count tasks per date
+  tasks.forEach(task => {
+    let taskDate: string | undefined;
+    
+    // Use createdAt if available, otherwise fallback to scheduledDate
+    if (task.createdAt) {
+      taskDate = new Date(task.createdAt).toISOString().split('T')[0];
+    } else if (task.scheduledDate) {
+      taskDate = task.scheduledDate;
+    }
+    
+    if (taskDate && lastNDays.includes(taskDate)) {
+      taskCounts[taskDate] = (taskCounts[taskDate] || 0) + 1;
+    }
+  });
+  
+  // Convert to array format for graph
+  return lastNDays.map(date => ({
+    date,
+    value: taskCounts[date] || 0
+  }));
 }
 
 function getLastNWeeks(n: number): Array<{ start: string; end: string; label: string }> {
@@ -71,6 +105,9 @@ export const Statistics: React.FC<StatisticsProps> = ({ onNavigate, onMenuClick,
     lifeAreas: []
   });
 
+  // State for graph metric (only one metric at a time)
+  const [selectedGraphMetric, setSelectedGraphMetric] = useState<{ topic: TopicType; metricKey: string } | null>(null);
+
   // Initialize with first metric selected for each topic
   useEffect(() => {
     setSelectedMetrics({
@@ -79,7 +116,27 @@ export const Statistics: React.FC<StatisticsProps> = ({ onNavigate, onMenuClick,
       habits: ['total'],
       lifeAreas: ['total']
     });
+    
+    // Initialize graph metric with first metric that has trend data
+    // 'total' for tasks has trend data, so use that
+    setSelectedGraphMetric({ topic: 'tasks', metricKey: 'total' });
   }, []);
+
+  // Check if a metric has trend data available
+  const hasTrendData = (topic: TopicType, metricKey: string): boolean => {
+    switch (topic) {
+      case 'objectives':
+        return metricKey === 'avgProgress';
+      case 'tasks':
+        return ['total', 'completed', 'completedToday', 'completionRate'].includes(metricKey);
+      case 'habits':
+        return ['completedToday', 'active', 'avgStreak'].includes(metricKey);
+      case 'lifeAreas':
+        return metricKey === 'withGoals';
+      default:
+        return false;
+    }
+  };
 
   const toggleMetric = (topic: TopicType, metricKey: MetricKey) => {
     setSelectedMetrics(prev => {
@@ -89,24 +146,56 @@ export const Statistics: React.FC<StatisticsProps> = ({ onNavigate, onMenuClick,
       if (isSelected) {
         // Deselect - but keep at least one selected
         if (current.length <= 1) return prev;
+        const newSelected = current.filter(k => k !== metricKey);
+        
+        // Update graph metric if this was the selected one
+        if (selectedGraphMetric?.topic === topic && selectedGraphMetric?.metricKey === metricKey) {
+          // Try to find another metric with trend data from this topic first
+          const nextMetricWithTrend = newSelected.find(k => hasTrendData(topic, k));
+          if (nextMetricWithTrend) {
+            setSelectedGraphMetric({ topic, metricKey: nextMetricWithTrend });
+          } else {
+            // Try to find any metric with trend data from any other topic
+            let found = false;
+            for (const [otherTopic, otherKeys] of Object.entries(prev)) {
+              if (otherTopic === topic) continue; // Skip current topic
+              const metricWithTrend = otherKeys.find(k => hasTrendData(otherTopic as TopicType, k));
+              if (metricWithTrend) {
+                setSelectedGraphMetric({ topic: otherTopic as TopicType, metricKey: metricWithTrend });
+                found = true;
+                break;
+              }
+            }
+            if (!found) {
+              setSelectedGraphMetric(null);
+            }
+          }
+        }
+        
         return {
           ...prev,
-          [topic]: current.filter(k => k !== metricKey)
+          [topic]: newSelected
         };
       } else {
         // Select (max 2)
+        let newSelected: string[];
         if (current.length >= 2) {
           // Remove first, add new
-          return {
-            ...prev,
-            [topic]: [current[1], metricKey]
-          };
+          newSelected = [current[1], metricKey];
         } else {
-          return {
-            ...prev,
-            [topic]: [...current, metricKey]
-          };
+          newSelected = [...current, metricKey];
         }
+        
+        // Always update graph metric when selecting a metric with trend data
+        // This ensures the graph shows the most recently selected metric with trend data
+        if (hasTrendData(topic, metricKey)) {
+          setSelectedGraphMetric({ topic, metricKey });
+        }
+        
+        return {
+          ...prev,
+          [topic]: newSelected
+        };
       }
     });
   };
@@ -349,6 +438,8 @@ export const Statistics: React.FC<StatisticsProps> = ({ onNavigate, onMenuClick,
   ) => {
     const topicMetrics = metrics[topic];
     const selected = selectedMetrics[topic];
+    // Ensure we have the latest selectedGraphMetric value
+    const currentGraphMetric = selectedGraphMetric;
 
     return (
       <div className="bg-white rounded-2xl shadow-sm p-5 border border-slate-100">
@@ -358,9 +449,6 @@ export const Statistics: React.FC<StatisticsProps> = ({ onNavigate, onMenuClick,
           </div>
           <div>
             <h2 className="text-lg font-bold text-text-main">{title}</h2>
-            <p className="text-xs text-text-tertiary">
-              {selected.length} metric{selected.length > 1 ? 's' : ''} selected
-            </p>
           </div>
         </div>
 
@@ -368,23 +456,38 @@ export const Statistics: React.FC<StatisticsProps> = ({ onNavigate, onMenuClick,
         <div className="grid grid-cols-2 gap-4">
           {topicMetrics.map(metric => {
             const isSelected = selected.includes(metric.key);
+            const isGraphMetric = currentGraphMetric?.topic === topic && currentGraphMetric?.metricKey === metric.key;
+            const hasTrend = hasTrendData(topic, metric.key);
+            
             return (
               <button
                 key={metric.key}
                 onClick={() => toggleMetric(topic, metric.key)}
-                className={`bg-gray-50 rounded-xl p-4 text-left transition-all ${
-                  isSelected 
-                    ? 'ring-2 ring-primary bg-primary/5' 
+                className={`bg-gray-50 rounded-xl p-4 text-left transition-all relative ${
+                  isGraphMetric
+                    ? 'bg-primary/10 shadow-sm border border-primary/30'
+                    : isSelected 
+                    ? 'bg-primary/5' 
                     : 'hover:bg-gray-100'
                 }`}
               >
+                {/* Graph indicator badge */}
+                {isGraphMetric && (
+                  <div className="absolute top-2 right-2 flex items-center gap-1 bg-primary text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                    <span className="material-symbols-outlined text-xs">show_chart</span>
+                    <span>Graph</span>
+                  </div>
+                )}
+                
                 <div className="flex items-center justify-between mb-1">
                   <p className="text-xs text-text-tertiary">{metric.label}</p>
-                  {isSelected && (
-                    <span className="material-symbols-outlined text-primary text-sm">check_circle</span>
+                  {!hasTrend && (
+                    <span className="text-[10px] text-text-tertiary italic" title="Geen trend data beschikbaar">
+                      (geen trend)
+                    </span>
                   )}
                 </div>
-                <p className={`text-2xl font-bold ${isSelected ? 'text-primary' : 'text-text-main'}`}>
+                <p className={`text-2xl font-bold ${isGraphMetric ? 'text-primary' : isSelected ? 'text-primary/80' : 'text-text-main'}`}>
                   {metric.value}
                   {metric.key === 'completionRate' || metric.key === 'avgProgress' ? '%' : ''}
                 </p>
@@ -396,7 +499,112 @@ export const Statistics: React.FC<StatisticsProps> = ({ onNavigate, onMenuClick,
     );
   };
 
-    return (
+  // Get graph data based on selected metric
+  const graphData = useMemo(() => {
+    if (!selectedGraphMetric) {
+      return null;
+    }
+
+    const { topic, metricKey } = selectedGraphMetric;
+    const metric = metrics[topic]?.find(m => m.key === metricKey);
+    
+    if (!metric) return null;
+
+    // Get trend data based on topic and metric
+    let trendData: DataPoint[] = [];
+    let title = '';
+    let yAxisLabel = '';
+
+    switch (topic) {
+      case 'objectives':
+        if (metricKey === 'avgProgress') {
+          trendData = stats.objectives.progressTrend;
+          title = 'Objective Progress Trend';
+          yAxisLabel = 'Progress %';
+        } else {
+          // No trend data available for other objective metrics
+          return null;
+        }
+        break;
+      case 'tasks':
+        if (metricKey === 'completed') {
+          trendData = stats.tasks.dailyTrend;
+          title = 'Tasks Completed per Day';
+          yAxisLabel = 'Aantal Taken';
+        } else if (metricKey === 'total') {
+          // Use tasks created per day for total tasks
+          const tasksCreatedData = getTasksCreatedPerDay(tasks, 30);
+          trendData = tasksCreatedData.map(dp => ({
+            label: new Date(dp.date).toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
+            value: dp.value,
+            date: dp.date
+          }));
+          title = 'Gecreëerde Taken per Datum';
+          yAxisLabel = 'Aantal Taken';
+        } else if (metricKey === 'completedToday') {
+          // Use daily trend for today's completion
+          trendData = stats.tasks.dailyTrend;
+          title = 'Tasks Completed per Day';
+          yAxisLabel = 'Aantal Taken';
+        } else if (metricKey === 'completionRate') {
+          // Calculate completion rate per day
+          const last30Days = getLastNDays(30);
+          trendData = last30Days.map(date => {
+            const dayTasks = getTasksForDate(date);
+            const completed = dayTasks.filter(t => t.completed).length;
+            const total = dayTasks.length;
+            const rate = total > 0 ? Math.round((completed / total) * 100) : 0;
+            return {
+              label: new Date(date).toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
+              value: rate,
+              date
+            };
+          });
+          title = 'Task Completion Rate per Day';
+          yAxisLabel = 'Completion Rate %';
+        }
+        break;
+      case 'habits':
+        if (metricKey === 'completedToday') {
+          trendData = stats.habits.completionTrend;
+          title = 'Habits Completed per Day';
+          yAxisLabel = 'Aantal Habits';
+        } else if (metricKey === 'active' || metricKey === 'avgStreak') {
+          trendData = stats.habits.streakTrend;
+          title = 'Average Habit Streak per Day';
+          yAxisLabel = 'Gemiddelde Streak';
+        } else {
+          // No trend data available for other habit metrics
+          return null;
+        }
+        break;
+      case 'lifeAreas':
+        if (metricKey === 'withGoals') {
+          trendData = stats.lifeAreas.trend;
+          title = 'Life Areas with Goals';
+          yAxisLabel = 'Aantal Life Areas';
+        } else {
+          // No trend data available for other life area metrics
+          return null;
+        }
+        break;
+    }
+
+    // Transform DataPoint[] to LineGraphDataPoint[]
+    if (trendData.length === 0) return null;
+
+    return {
+      data: trendData.map(dp => ({
+        date: dp.date || dp.label,
+        value: dp.value
+      })),
+      title: title || `${metric.label} Trend`,
+      yAxisLabel: yAxisLabel || metric.label,
+      color: metric.color
+    };
+  }, [selectedGraphMetric, stats, metrics, tasks, getTasksForDate]);
+
+  return (
     <div className="min-h-screen bg-background pb-24">
       <TopNav 
         title="Statistics" 
@@ -405,6 +613,28 @@ export const Statistics: React.FC<StatisticsProps> = ({ onNavigate, onMenuClick,
       />
 
       <div className="px-4 py-6 space-y-6">
+        {/* Graph - Shows selected metric */}
+        {graphData ? (
+          <LineGraph
+            data={graphData.data}
+            title={graphData.title}
+            xAxisLabel="Datum"
+            yAxisLabel={graphData.yAxisLabel}
+            color={graphData.color}
+            height={300}
+          />
+        ) : (
+          <div className="bg-white rounded-2xl p-6 border border-slate-200">
+            <div className="flex items-center gap-3 text-text-tertiary">
+              <span className="material-symbols-outlined text-xl">info</span>
+              <div>
+                <p className="text-sm font-medium text-text-secondary">Geen trend data beschikbaar</p>
+                <p className="text-xs mt-0.5">Selecteer een metric met trend data om een grafiek te zien</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Objectives & Key Results - Priority 1 */}
         {renderTopicSection(
           'objectives',

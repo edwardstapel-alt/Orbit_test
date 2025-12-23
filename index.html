@@ -38,16 +38,37 @@
         lastTouchEnd = now;
       }, false);
       
-      // Prevent pull-to-refresh on mobile
+      // Prevent pull-to-refresh on mobile (only when at top and scrolling down)
       let touchStartY = 0;
+      let touchStartScrollY = 0;
+      let isScrolling = false;
+      
       document.addEventListener('touchstart', function(e) {
         touchStartY = e.touches[0].clientY;
+        // Check scroll position of the main scroll container or window
+        const scrollContainer = document.querySelector('.overflow-y-auto') || document.documentElement;
+        touchStartScrollY = scrollContainer.scrollTop || window.scrollY || 0;
+        isScrolling = false;
       }, { passive: true });
       
       document.addEventListener('touchmove', function(e) {
         const touchY = e.touches[0].clientY;
         const touchDiff = touchY - touchStartY;
-        if (touchDiff > 0 && window.scrollY === 0) {
+        const scrollContainer = document.querySelector('.overflow-y-auto') || document.documentElement;
+        const currentScrollY = scrollContainer.scrollTop || window.scrollY || 0;
+        
+        // Allow scrolling if user is scrolling up or if already scrolled down
+        if (touchDiff < 0 || currentScrollY > 0 || touchStartScrollY > 0) {
+          isScrolling = true;
+          return; // Allow normal scrolling
+        }
+        
+        // Only prevent pull-to-refresh when:
+        // 1. Scrolling down (touchDiff > 0)
+        // 2. Already at the top (currentScrollY === 0)
+        // 3. Started at the top (touchStartScrollY === 0)
+        // 4. Not already scrolling
+        if (touchDiff > 0 && currentScrollY === 0 && touchStartScrollY === 0 && !isScrolling) {
           e.preventDefault();
         }
       }, { passive: false });
@@ -103,10 +124,13 @@
         --border-color: #1A1A1A;
       }
       
-      body {
+      html, body {
         background-color: var(--bg-background);
         color: var(--text-main);
         transition: background-color 0.3s ease, color 0.3s ease;
+        /* Allow scrolling */
+        overflow-x: hidden;
+        overflow-y: auto;
         /* Hide scrollbar for Chrome, Safari and Opera */
         -ms-overflow-style: none;  /* IE and Edge */
         scrollbar-width: none;  /* Firefox */
@@ -201,6 +225,22 @@
       .black .border-slate-100,
       .black .border-gray-200 {
         border-color: var(--border-color) !important;
+      }
+      
+      /* Black theme - Subtle borders */
+      .black .border-gray-50,
+      .black .border-slate-50 {
+        border-color: #0F0F0F !important;
+      }
+      
+      .black .border-gray-100,
+      .black .border-slate-100 {
+        border-color: #1A1A1A !important;
+      }
+      
+      .black .border-gray-200,
+      .black .border-slate-200 {
+        border-color: #1F1F1F !important;
       }
       
       .dark .hover\:bg-slate-200:hover,

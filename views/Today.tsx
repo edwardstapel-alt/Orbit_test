@@ -272,36 +272,38 @@ export const Today: React.FC<TodayProps> = ({ onEdit, onNavigate, onMenuClick, o
         onProfileClick={onProfileClick} 
       />
 
-      {/* Calendar Link */}
+      {/* View Mode Toggle */}
       <div className="px-6 pt-4 pb-2">
-        <button
-          onClick={() => onNavigate(View.CALENDAR)}
-          className="w-full flex items-center justify-between p-4 bg-white rounded-2xl shadow-sm border border-slate-100 hover:border-primary/30 hover:shadow-md transition-all group"
-        >
-          <div className="flex items-center gap-3">
-            <span className="material-symbols-outlined text-primary text-xl">calendar_month</span>
-            <div className="text-left">
-              <span className="text-sm font-bold text-text-main block">Kalender</span>
-              <span className="text-xs text-text-tertiary">Week & Maand overzicht</span>
-            </div>
-          </div>
-          <span className="material-symbols-outlined text-text-tertiary group-hover:text-primary transition-colors">chevron_right</span>
-        </button>
+        <div className="flex items-center justify-end gap-2">
+          <button
+            className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-primary text-white"
+          >
+            <span className="material-symbols-outlined text-sm align-middle mr-1">list</span>
+            List
+          </button>
+          <button
+            onClick={() => onNavigate(View.CALENDAR)}
+            className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-gray-100 text-text-tertiary hover:bg-gray-200"
+          >
+            <span className="material-symbols-outlined text-sm align-middle mr-1">calendar_month</span>
+            Calendar
+          </button>
+        </div>
       </div>
 
       <main className="flex-1 overflow-y-auto no-scrollbar pb-32 px-6 pt-6">
         {/* Entity Filter - Compact Icon Toggles */}
-        <div className="mb-3">
-          <EntityFilter
-            entityType="task"
-            filters={filters}
-            onFiltersChange={setFilters}
-            showLinkedOnly={true}
-            showUnlinkedOnly={true}
-          />
-        </div>
+            <div className="mb-3">
+              <EntityFilter
+                entityType="task"
+                filters={filters}
+                onFiltersChange={setFilters}
+                showLinkedOnly={true}
+                showUnlinkedOnly={true}
+              />
+            </div>
 
-        {/* Date Navigation */}
+            {/* Date Navigation */}
         <div className="flex items-center justify-between mb-6">
           <button
             onClick={() => changeDay(-1)}
