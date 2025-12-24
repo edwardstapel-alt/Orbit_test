@@ -494,7 +494,7 @@ export default function App() {
           
           {/* Main Content */}
           <div className="flex-1 flex flex-col lg:ml-0">
-            <div className="flex justify-center min-h-screen bg-background md:bg-gray-100">
+            <div className="flex lg:justify-center min-h-screen bg-background md:bg-gray-100">
               <div className="w-full lg:max-w-[1400px] xl:max-w-[1600px] h-screen bg-background relative lg:shadow-2xl overflow-hidden flex flex-col">
                   <div 
                     key={currentView} 

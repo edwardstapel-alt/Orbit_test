@@ -243,8 +243,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
         if (!weeklyReviewDue && !monthlyReviewDue) return null;
         
         return (
-          <section className="px-6 md:px-12 lg:px-16 mt-4">
-            <div className="max-w-6xl mx-auto">
+          <section className="px-6 md:px-12 lg:px-6 mt-4">
+            <div className="w-full lg:max-w-6xl lg:mx-auto">
               <div className="bg-primary/10 border-2 border-primary/30 rounded-2xl p-4">
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
@@ -284,8 +284,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
 
       {/* Quick Actions Panel */}
       {quickActions.length > 0 && (
-        <section className="px-6 md:px-12 lg:px-16 mt-4">
-          <div className="max-w-6xl mx-auto">
+        <section className="px-6 md:px-12 lg:px-6 mt-4">
+          <div className="w-full lg:max-w-6xl lg:mx-auto">
             <QuickActionsPanel
               customActions={quickActions}
               onActionClick={(action) => {
@@ -304,7 +304,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
 
       {/* Toggle - Only show if showCategory is enabled */}
       {showCategory && (
-        <section className="px-6 md:px-12 lg:px-16 mt-4">
+        <section className="px-6 md:px-12 lg:px-6 mt-4">
           <div className="flex h-12 w-full max-w-2xl mx-auto items-center justify-center rounded-2xl bg-[#E6E6E6] p-1.5 shadow-inner">
           <button 
             onClick={() => setMode('personal')}
@@ -323,8 +323,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
       )}
 
       {/* OKRs (Objectives) */}
-      <section className="w-full mt-8 px-6 md:px-12 lg:px-16">
-        <div className="max-w-6xl mx-auto">
+      <section className="w-full mt-8 px-6 md:px-12 lg:px-6">
+        <div className="w-full lg:max-w-6xl lg:mx-auto">
         <div className="flex items-baseline justify-between mb-4">
           <h3 className="text-text-main text-lg font-bold tracking-tight">Objectives & Key Results</h3>
           <button className="text-primary text-sm font-medium hover:opacity-80 transition-opacity" onClick={() => setShowAddObjectiveModal(true)}>
@@ -356,8 +356,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
       </section>
 
       {/* Daily Focus */}
-      <section className="px-6 md:px-12 lg:px-16 mt-4">
-        <div className="max-w-6xl mx-auto">
+      <section className="px-6 md:px-12 lg:px-6 mt-4">
+        <div className="w-full lg:max-w-6xl lg:mx-auto">
         <div className="flex items-center justify-between mb-4 px-1">
           <div className="flex items-center gap-3">
             <h3 className="text-text-main text-lg font-bold tracking-tight">Daily Focus</h3>
@@ -442,7 +442,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
 
       {/* Habit Streaks */}
       <section className="w-full mt-8">
-        <div className="flex items-center justify-between px-6 md:px-12 lg:px-16 mb-4">
+        <div className="flex items-center justify-between px-6 md:px-12 lg:px-6 mb-4">
           <h3 className="text-text-main text-lg font-bold tracking-tight">Habit Streaks</h3>
           <button
             onClick={() => onNavigate(View.HABITS)}
@@ -452,7 +452,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
             <span className="material-symbols-outlined text-sm">chevron_right</span>
           </button>
         </div>
-        <div className="flex overflow-x-auto lg:grid lg:grid-cols-4 xl:grid-cols-5 lg:overflow-x-visible no-scrollbar px-6 md:px-12 lg:px-16 pb-6 gap-4 snap-x lg:snap-none">
+        <div className="flex overflow-x-auto lg:grid lg:grid-cols-4 xl:grid-cols-5 lg:overflow-x-visible no-scrollbar px-6 md:px-12 lg:px-6 pb-6 gap-4 snap-x lg:snap-none">
             <button 
               onClick={() => onEdit('habit')} 
               className="snap-start lg:snap-none flex flex-col items-center justify-center gap-2 p-4 rounded-3xl bg-white shadow-sm border-2 border-dashed border-slate-200 shrink-0 lg:shrink min-w-[140px] lg:min-w-0 aspect-square cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors group"
@@ -486,8 +486,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
       </section>
 
       {/* Life Areas */}
-      <section className="w-full mt-8 px-6 md:px-12 lg:px-16">
-        <div className="max-w-6xl mx-auto">
+      <section className="w-full mt-8 px-6 md:px-12 lg:px-6">
+        <div className="w-full lg:max-w-6xl lg:mx-auto">
           <div className="flex items-baseline justify-between mb-4">
             <h3 className="text-text-main text-lg font-bold tracking-tight">Life Areas</h3>
             <button 
