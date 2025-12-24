@@ -125,9 +125,9 @@ export const ObjectiveDetail: React.FC<ObjectiveDetailProps> = ({ objectiveId, o
         </button>
       </div>
 
-      <main className="flex-1 overflow-y-auto no-scrollbar p-6 pb-32">
+      <main className="flex-1 overflow-y-auto no-scrollbar p-6 lg:p-8 xl:p-12 pb-32 lg:pb-8">
         {/* Title Section */}
-        <div className="mb-8 text-center">
+        <div className="mb-8 lg:mb-12 text-center lg:text-left max-w-4xl mx-auto lg:mx-0">
             <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider mb-4 ${getStatusBadge(getEffectiveStatus(objective.status, objective.id, false))}`}>
                 <span className={`size-1.5 rounded-full ${getStatusColor(getEffectiveStatus(objective.status, objective.id, false))}`}></span>
                 {getEffectiveStatus(objective.status, objective.id, false)}
@@ -137,8 +137,8 @@ export const ObjectiveDetail: React.FC<ObjectiveDetailProps> = ({ objectiveId, o
         </div>
 
         {/* Progress Circle */}
-        <div className="flex justify-center mb-10">
-            <div className="relative size-40">
+        <div className="flex justify-center lg:justify-start mb-10 max-w-4xl mx-auto lg:mx-0">
+            <div className="relative size-40 lg:size-48">
                 <svg className="size-full -rotate-90" viewBox="0 0 100 100">
                     <circle cx="50" cy="50" r="45" fill="none" stroke="#E5E7EB" strokeWidth="8" />
                     <circle 
@@ -165,7 +165,7 @@ export const ObjectiveDetail: React.FC<ObjectiveDetailProps> = ({ objectiveId, o
         </div>
 
         {/* Metadata Grid */}
-        <div className="grid grid-cols-2 gap-4 mb-8">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8 max-w-4xl mx-auto lg:mx-0">
             <div onClick={() => setActiveModal('owner')} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm cursor-pointer hover:border-primary/30 transition-colors group">
                 <span className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest block mb-2">Owner</span>
                 <div className="flex items-center gap-2">
@@ -294,7 +294,7 @@ export const ObjectiveDetail: React.FC<ObjectiveDetailProps> = ({ objectiveId, o
         </div>
 
         {/* Key Results List */}
-        <div className="space-y-4">
+        <div className="space-y-4 max-w-4xl mx-auto lg:mx-0">
             <div className="flex items-center justify-between px-1">
                 <h3 className="text-lg font-bold text-text-main">Key Results</h3>
                 <button onClick={() => setActiveModal('linkKeyResult')} className="text-primary text-sm font-bold hover:bg-primary/5 px-3 py-1.5 rounded-lg transition-colors">
@@ -387,7 +387,7 @@ export const ObjectiveDetail: React.FC<ObjectiveDetailProps> = ({ objectiveId, o
 
         {/* Objective-Level Habits */}
         {linkedHabits.filter(h => h.objectiveId === objectiveId && !h.linkedKeyResultId).length > 0 && (
-          <div className="mt-6">
+          <div className="mt-6 max-w-4xl mx-auto lg:mx-0">
             <div className="flex items-center justify-between px-1 mb-4">
               <h3 className="text-lg font-bold text-text-main">Linked Habits</h3>
               <button 
@@ -439,7 +439,7 @@ export const ObjectiveDetail: React.FC<ObjectiveDetailProps> = ({ objectiveId, o
           }
 
           return (
-            <div className="mt-6">
+            <div className="mt-6 max-w-4xl mx-auto lg:mx-0">
               <div className="flex items-center justify-between px-1 mb-4">
                 <h3 className="text-lg font-bold text-text-main">Action Plan</h3>
                 <span className="text-xs text-text-tertiary">
@@ -494,7 +494,7 @@ export const ObjectiveDetail: React.FC<ObjectiveDetailProps> = ({ objectiveId, o
         {(() => {
           const objectiveRetrospectives = getRetrospectivesByObjective(objectiveId);
           return (
-            <div className="mt-6">
+            <div className="mt-6 max-w-4xl mx-auto lg:mx-0">
               <div className="flex items-center justify-between px-1 mb-4">
                 <h3 className="text-lg font-bold text-text-main">Retrospectives</h3>
                 <button

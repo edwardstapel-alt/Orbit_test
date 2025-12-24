@@ -16,7 +16,7 @@ export const TopNav: React.FC<TopNavProps> = ({ title, subtitle, onProfileClick,
   const { userProfile } = useData();
   
   return (
-    <header className="sticky top-0 z-30 bg-background/95 backdrop-blur-md px-6 md:px-12 lg:px-16 pt-6 pb-2 flex items-center justify-between transition-all duration-300 border-b border-transparent">
+    <header className="sticky top-0 z-30 bg-background/95 backdrop-blur-md px-6 md:px-12 lg:px-8 xl:px-12 pt-4 lg:pt-6 pb-2 flex items-center justify-between transition-all duration-300 border-b border-transparent">
       {showBack && onBack ? (
         <button 
           className="flex items-center justify-center p-2 -ml-2 text-text-main rounded-full hover:bg-black/5 transition-colors"
@@ -26,7 +26,7 @@ export const TopNav: React.FC<TopNavProps> = ({ title, subtitle, onProfileClick,
         </button>
       ) : (
       <button 
-        className="flex items-center justify-center p-2 -ml-2 text-text-main rounded-full hover:bg-black/5 transition-colors"
+        className="lg:hidden flex items-center justify-center p-2 -ml-2 text-text-main rounded-full hover:bg-black/5 transition-colors"
         onClick={onMenuClick}
       >
         <span className="material-symbols-outlined text-[24px]">menu</span>

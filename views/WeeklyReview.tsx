@@ -153,9 +153,10 @@ export const WeeklyReview: React.FC<WeeklyReviewProps> = ({ onBack, onNavigate, 
         onBack={onBack}
       />
 
-      <main className="flex-1 overflow-y-auto no-scrollbar pb-32 px-6 pt-6">
+      <main className="flex-1 overflow-y-auto no-scrollbar pb-32 lg:pb-8 px-6 lg:px-8 xl:px-12 pt-6">
+        <div className="max-w-5xl mx-auto">
         {/* Week Overview Cards */}
-        <div className="grid grid-cols-2 gap-3 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4 mb-6">
           <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
             <div className="text-xs font-bold text-text-tertiary uppercase mb-1">Tasks</div>
             <div className="text-2xl font-bold text-text-main">{weekData.completedTasksCount}/{weekData.totalTasks}</div>
@@ -273,6 +274,7 @@ export const WeeklyReview: React.FC<WeeklyReviewProps> = ({ onBack, onNavigate, 
               className="w-full min-h-[100px] p-3 rounded-xl border border-gray-200 bg-gray-50 text-text-main placeholder-text-tertiary resize-none focus:outline-none focus:border-primary focus:bg-white"
             />
           </div>
+        </div>
         </div>
       </main>
 

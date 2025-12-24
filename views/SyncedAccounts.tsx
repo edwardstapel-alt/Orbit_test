@@ -85,12 +85,24 @@ export const SyncedAccounts: React.FC<SyncedAccountsProps> = ({ onBack, onNaviga
 
     // Wait for Google API to load
     const checkGoogleApi = () => {
-      if (window.google && window.google.accounts) {
+      if (window.google && window.google.accounts && window.google.accounts.oauth2) {
         setGoogleApiLoaded(true);
+        console.log('✅ Google API loaded successfully');
       } else {
-        setTimeout(checkGoogleApi, 100);
+        // Check again after a delay, but limit retries to prevent infinite loop
+        const retryCount = parseInt(sessionStorage.getItem('google_api_retry_count') || '0', 10);
+        if (retryCount < 50) { // Max 5 seconds (50 * 100ms)
+          sessionStorage.setItem('google_api_retry_count', (retryCount + 1).toString());
+          setTimeout(checkGoogleApi, 100);
+        } else {
+          console.error('❌ Google API failed to load after multiple attempts');
+          sessionStorage.removeItem('google_api_retry_count');
+        }
       }
     };
+    
+    // Reset retry count
+    sessionStorage.removeItem('google_api_retry_count');
     
     // Start checking after a short delay to allow scripts to load
     setTimeout(checkGoogleApi, 500);

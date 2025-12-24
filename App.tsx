@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Friend, EntityType } from './types';
 import { DataProvider } from './context/DataContext';
 import { BottomNav } from './components/BottomNav';
+import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './views/Dashboard';
 import { Relationships } from './views/Relationships';
 import { FriendDetail } from './views/FriendDetail';
@@ -482,18 +483,34 @@ export default function App() {
 
   return (
     <DataProvider>
-        <div className="flex justify-center min-h-screen bg-background md:bg-gray-100">
-        <div className="w-full md:max-w-[1280px] h-screen bg-background relative md:shadow-2xl overflow-hidden flex flex-col">
-            <div 
-              key={currentView} 
-              className="flex-1 overflow-y-auto"
-              style={{
-                animation: 'fadeIn 0.25s ease-in-out'
-              }}
-            >
-              {renderView()}
-            </div>
-            {showBottomNav && <BottomNav currentView={currentView} onNavigate={navigateTo} />}
+        <div className="flex min-h-screen bg-background">
+          {/* Sidebar - Desktop only */}
+          <Sidebar 
+            currentView={currentView} 
+            onNavigate={navigateTo}
+            onMenuClick={openMenu}
+            onProfileClick={openProfile}
+          />
+          
+          {/* Main Content */}
+          <div className="flex-1 flex flex-col lg:ml-0">
+            <div className="flex justify-center min-h-screen bg-background md:bg-gray-100">
+              <div className="w-full lg:max-w-[1400px] xl:max-w-[1600px] h-screen bg-background relative lg:shadow-2xl overflow-hidden flex flex-col">
+                  <div 
+                    key={currentView} 
+                    className="flex-1 overflow-y-auto"
+                    style={{
+                      animation: 'fadeIn 0.25s ease-in-out'
+                    }}
+                  >
+                    {renderView()}
+                  </div>
+                  {/* Bottom Nav - Mobile only */}
+                  {showBottomNav && (
+                    <div className="lg:hidden">
+                      <BottomNav currentView={currentView} onNavigate={navigateTo} />
+                    </div>
+                  )}
             
             {/* Modal Layer */}
       {editorType && (
@@ -535,7 +552,9 @@ export default function App() {
           onViewObjective={handleViewObjective}
         />
       )}
-        </div>
+              </div>
+            </div>
+          </div>
         </div>
     </DataProvider>
   );

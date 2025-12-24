@@ -171,7 +171,8 @@ export const ReviewsOverview: React.FC<ReviewsOverviewProps> = ({
         </div>
       </div>
 
-      <main className="flex-1 overflow-y-auto no-scrollbar pb-32 px-6 pt-4">
+      <main className="flex-1 overflow-y-auto no-scrollbar pb-32 lg:pb-8 px-6 lg:px-8 xl:px-12 pt-4">
+        <div className="max-w-6xl mx-auto">
         {filteredItems.length === 0 ? (
           <div className="bg-white rounded-2xl p-8 text-center border-2 border-dashed border-slate-200">
             <span className="material-symbols-outlined text-4xl text-text-tertiary mb-3 block">description</span>
@@ -220,6 +221,7 @@ export const ReviewsOverview: React.FC<ReviewsOverviewProps> = ({
             })}
           </div>
         )}
+        </div>
       </main>
 
       {/* Quick Actions */}

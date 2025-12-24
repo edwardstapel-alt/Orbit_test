@@ -765,31 +765,28 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
         {/* TASK FORM */}
         {type === 'task' && (
             <div className="space-y-6">
+                {/* VERPLICHT: Title */}
                 <div className="bg-white p-2 rounded-2xl shadow-sm border border-slate-100">
+                    <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-1 px-1">Task Title <span className="text-red-500">*</span></label>
                     <input type="text" className="w-full p-4 rounded-xl text-xl font-bold bg-transparent outline-none placeholder:text-gray-300" 
-                        value={formData.title || ''} onChange={(e) => handleChange('title', e.target.value)} placeholder="What needs focus?" autoFocus />
+                        value={formData.title || ''} onChange={(e) => handleChange('title', e.target.value)} placeholder="What needs focus?" autoFocus required />
                 </div>
                 
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                        <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Category</label>
-                        <select className="w-full bg-transparent font-medium outline-none text-text-main" 
-                            value={formData.tag || 'Work'} onChange={(e) => handleChange('tag', e.target.value)}>
-                            <option value="Work">Work</option>
-                            <option value="Personal">Personal</option>
-                            <option value="Health">Health</option>
-                            <option value="Family">Family</option>
-                            <option value="Finance">Finance</option>
-                            <option value="Strategy">Strategy</option>
-                        </select>
-                    </div>
-                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                         <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Timing</label>
-                         <input type="text" className="w-full bg-transparent font-medium outline-none text-text-main" 
-                        value={formData.time || ''} onChange={(e) => handleChange('time', e.target.value)} placeholder="e.g. 2:00 PM" />
-                    </div>
+                {/* VERPLICHT: Category */}
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+                    <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Category <span className="text-red-500">*</span></label>
+                    <select className="w-full bg-transparent font-medium outline-none text-text-main" 
+                        value={formData.tag || 'Work'} onChange={(e) => handleChange('tag', e.target.value)} required>
+                        <option value="Work">Work</option>
+                        <option value="Personal">Personal</option>
+                        <option value="Health">Health</option>
+                        <option value="Family">Family</option>
+                        <option value="Finance">Finance</option>
+                        <option value="Strategy">Strategy</option>
+                    </select>
                 </div>
 
+                {/* OPTIONEEL: Priority */}
                 <div className="flex items-center justify-between bg-white p-5 rounded-2xl border border-slate-100 shadow-sm cursor-pointer" onClick={() => handleChange('priority', !formData.priority)}>
                     <div className="flex items-center gap-3">
                          <div className={`size-8 rounded-full flex items-center justify-center ${formData.priority ? 'bg-red-100 text-red-500' : 'bg-gray-100 text-gray-400'}`}>
@@ -802,49 +799,13 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                     </div>
                 </div>
 
-                {/* Friend/Person Link */}
+                {/* OPTIONEEL: Time Management */}
                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                    <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Link to Person</label>
-                    <div className="flex items-center gap-3">
-                        {formData.friendId && (() => {
-                            const selectedFriend = data.friends.find(f => f.id === formData.friendId);
-                            return selectedFriend ? (
-                                <div 
-                                    className="size-10 rounded-full bg-cover bg-center border-2 border-white shadow-sm flex-shrink-0"
-                                    style={{
-                                        backgroundImage: selectedFriend.image ? `url("${selectedFriend.image}")` : 'none',
-                                        backgroundColor: selectedFriend.image ? 'transparent' : '#E5E7EB'
-                                    }}
-                                >
-                                    {!selectedFriend.image && (
-                                        <div className="w-full h-full flex items-center justify-center text-text-tertiary">
-                                            <span className="material-symbols-outlined text-xl">person</span>
-                                        </div>
-                                    )}
-                                </div>
-                            ) : null;
-                        })()}
-                        <select 
-                            className="flex-1 p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main" 
-                            value={formData.friendId || ''} 
-                            onChange={(e) => handleChange('friendId', e.target.value)}
-                        >
-                            <option value="">No person linked</option>
-                            {data.friends.map(friend => (
-                                <option key={friend.id} value={friend.id}>{friend.name}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <p className="text-xs text-text-tertiary mt-2">Optionally link this task to someone in your orbit</p>
-                </div>
-
-                {/* Time Management */}
-                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                    <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-3">Time Management</label>
+                    <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-3">Schedule (Optional)</label>
                     
                     <div className="space-y-4">
                         <div>
-                            <label className="block text-xs font-medium text-text-secondary mb-2">Scheduled Date</label>
+                            <label className="block text-xs font-medium text-text-secondary mb-2">Date</label>
                             <input 
                                 type="date" 
                                 className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main" 
@@ -854,7 +815,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                         </div>
 
                         <div>
-                            <label className="block text-xs font-medium text-text-secondary mb-2">Scheduled Time</label>
+                            <label className="block text-xs font-medium text-text-secondary mb-2">Time</label>
                             <input 
                                 type="time" 
                                 step="900"
@@ -877,13 +838,13 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
 
                         {data.timeSlots.length > 0 && (
                             <div>
-                                <label className="block text-xs font-medium text-text-secondary mb-2">Link naar Time Block</label>
+                                <label className="block text-xs font-medium text-text-secondary mb-2">Link to Time Block</label>
                                 <select 
                                     className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main" 
                                     value={formData.timeSlotId || ''} 
                                     onChange={(e) => handleChange('timeSlotId', e.target.value)}
                                 >
-                                    <option value="">Geen Time Block</option>
+                                    <option value="">No Time Block</option>
                                     {data.timeSlots.map(slot => (
                                         <option key={slot.id} value={slot.id}>
                                             {slot.title} ({slot.date} {slot.startTime}-{slot.endTime})
@@ -895,9 +856,10 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                     </div>
                 </div>
 
-                {/* Quick Link Selector */}
+                {/* OPTIONEEL: Quick Link Selector - Link to Goals */}
                 {(data.keyResults.length > 0 || data.objectives.length > 0 || data.lifeAreas.length > 0) && (
                     <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                        <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-3">Link to Goals (Optional)</label>
                         <QuickLinkSelector
                             entityType="task"
                             currentLinks={{
@@ -930,6 +892,43 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                         />
                     </div>
                 )}
+
+                {/* OPTIONEEL: Friend/Person Link */}
+                {data.friends.length > 0 && (
+                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+                        <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Link to Person (Optional)</label>
+                        <div className="flex items-center gap-3">
+                            {formData.friendId && (() => {
+                                const selectedFriend = data.friends.find(f => f.id === formData.friendId);
+                                return selectedFriend ? (
+                                    <div 
+                                        className="size-10 rounded-full bg-cover bg-center border-2 border-white shadow-sm flex-shrink-0"
+                                        style={{
+                                            backgroundImage: selectedFriend.image ? `url("${selectedFriend.image}")` : 'none',
+                                            backgroundColor: selectedFriend.image ? 'transparent' : '#E5E7EB'
+                                        }}
+                                    >
+                                        {!selectedFriend.image && (
+                                            <div className="w-full h-full flex items-center justify-center text-text-tertiary">
+                                                <span className="material-symbols-outlined text-xl">person</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : null;
+                            })()}
+                            <select 
+                                className="flex-1 p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main" 
+                                value={formData.friendId || ''} 
+                                onChange={(e) => handleChange('friendId', e.target.value)}
+                            >
+                                <option value="">No person linked</option>
+                                {data.friends.map(friend => (
+                                    <option key={friend.id} value={friend.id}>{friend.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+                )}
             </div>
         )}
 
@@ -937,11 +936,12 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
         {type === 'habit' && (
             <div className="space-y-6">
                 <div className="bg-white p-6 rounded-3xl shadow-soft border border-slate-100 flex flex-col items-center gap-4">
+                    <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-1">Habit Name <span className="text-red-500">*</span></label>
                     <div className="size-20 rounded-2xl bg-primary/10 flex items-center justify-center text-primary text-4xl mb-2">
                         <span className="material-symbols-outlined" style={{fontSize: '40px'}}>{formData.icon || 'star'}</span>
                     </div>
                     <input type="text" className="w-full text-center text-2xl font-bold bg-transparent outline-none placeholder:text-gray-300 border-b border-transparent focus:border-gray-100 pb-2 transition-colors" 
-                        value={formData.name || ''} onChange={(e) => handleChange('name', e.target.value)} placeholder="Name your habit" autoFocus />
+                        value={formData.name || ''} onChange={(e) => handleChange('name', e.target.value)} placeholder="Name your habit" autoFocus required />
                 </div>
 
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4">
@@ -1026,8 +1026,9 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                       );
                     })()}
 
-                     <div>
-                        <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-2">Icon Code</label>
+                    {/* OPTIONEEL: Icon Selection */}
+                    <div>
+                        <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-2">Icon (Optional)</label>
                         <div className="flex gap-2">
                             <input type="text" className="flex-1 p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main" 
                                 value={formData.icon || ''} onChange={(e) => handleChange('icon', e.target.value)} placeholder="e.g. water_drop" />
@@ -1036,27 +1037,11 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                             </a>
                         </div>
                     </div>
-                    {/* Template Selector (only for new habits) */}
-                    {!editId && (
-                      <div>
-                        <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-2">
-                          Start vanuit Template (optioneel)
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => setShowTemplateSelector(true)}
-                          className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 hover:bg-gray-100 transition-colors text-left flex items-center justify-between"
-                        >
-                          <span className="text-text-main">Selecteer template...</span>
-                          <span className="material-symbols-outlined text-text-tertiary">arrow_forward</span>
-                        </button>
-                      </div>
-                    )}
 
-                    {/* Schedule Selector */}
+                    {/* OPTIONEEL: Schedule */}
                     <div>
                       <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-2">
-                        Schedule
+                        Schedule (Optional)
                       </label>
                       <button
                         type="button"
@@ -1072,13 +1057,13 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                               : habitSchedule.frequency === 'weekly'
                               ? `Weekly (${habitSchedule.daysOfWeek?.length || 0} days)`
                               : 'Monthly'
-                            : 'Select'}
+                            : 'Select schedule (optional)'}
                         </span>
                         <span className="material-symbols-outlined text-text-tertiary">arrow_forward</span>
                       </button>
                     </div>
 
-                    {/* Generate as Tasks Option (only for new habits) */}
+                    {/* OPTIONEEL: Generate as Tasks (only for new habits with schedule) */}
                     {!editId && habitSchedule && (
                       <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl">
                         <input
@@ -1094,87 +1079,178 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                       </div>
                     )}
 
-                    {/* Extended Fields */}
-                    <div className="grid grid-cols-2 gap-4">
+                    {/* OPTIONEEL: Quick Link Selector - Link to Goals */}
+                    {(data.keyResults.length > 0 || data.objectives.length > 0 || data.lifeAreas.length > 0) && (
                       <div>
-                        <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-2">
-                          Target Frequency (per week)
-                        </label>
-                        <input
-                          type="number"
-                          min="1"
-                          max="7"
-                          className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main"
-                          value={formData.targetFrequency || 7}
-                          onChange={(e) => handleChange('targetFrequency', parseInt(e.target.value) || 7)}
+                        <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-2">Link to Goals (Optional)</label>
+                        <QuickLinkSelector
+                            entityType="habit"
+                            currentLinks={{
+                                objectiveId: formData.objectiveId,
+                                keyResultId: formData.linkedKeyResultId,
+                                lifeAreaId: formData.lifeAreaId
+                            }}
+                            onLinkChange={(links) => {
+                                if (links.objectiveId !== formData.objectiveId) {
+                                    handleChange('objectiveId', links.objectiveId || '');
+                                }
+                                if (links.keyResultId !== formData.linkedKeyResultId) {
+                                    handleChange('linkedKeyResultId', links.keyResultId || '');
+                                    // If linking to a Key Result, show progress contribution field
+                                    if (links.keyResultId) {
+                                      const kr = data.keyResults.find(k => k.id === links.keyResultId);
+                                      if (kr && !formData.progressContribution) {
+                                        handleChange('progressContribution', 1);
+                                      }
+                                    }
+                                }
+                                if (links.lifeAreaId !== formData.lifeAreaId) {
+                                    handleChange('lifeAreaId', links.lifeAreaId || '');
+                                }
+                            }}
+                            onCreateNew={(type, context) => {
+                                if (onEdit) {
+                                    onEdit(type, undefined, undefined, context);
+                                }
+                            }}
+                            entityTitle={formData.name}
+                            contextLifeAreaId={contextLifeAreaId}
+                            contextObjectiveId={contextObjectiveId}
+                            showSuggestions={true}
                         />
                       </div>
-                      <div>
-                        <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-2">
-                          Reminder Time
-                        </label>
-                        <input
-                          type="time"
-                          className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main"
-                          value={formData.reminderTime || ''}
-                          onChange={(e) => handleChange('reminderTime', e.target.value)}
-                        />
-                      </div>
-                    </div>
+                    )}
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-2">
-                          Category
-                        </label>
-                        <select
-                          className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main"
-                          value={formData.category || 'Personal'}
-                          onChange={(e) => handleChange('category', e.target.value)}
-                        >
-                          <option value="Health">Health</option>
-                          <option value="Productivity">Productivity</option>
-                          <option value="Learning">Learning</option>
-                          <option value="Personal">Personal</option>
-                          <option value="Fitness">Fitness</option>
-                          <option value="Social">Social</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-2">
-                          Color
-                        </label>
-                        <input
-                          type="color"
-                          className="w-full h-12 p-1 bg-gray-50 rounded-xl outline-none cursor-pointer"
-                          value={formData.color || '#8B5CF6'}
-                          onChange={(e) => handleChange('color', e.target.value)}
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-2">
-                        Notes / Reflections
-                      </label>
-                      <textarea
-                        className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main min-h-[100px]"
-                        value={formData.notes || ''}
-                        onChange={(e) => handleChange('notes', e.target.value)}
-                        placeholder="Voeg notities of reflecties toe..."
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                         <div>
-                            <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-2">Current Streak</label>
-                            <input type="number" className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main" 
-                                value={formData.streak || 0} onChange={(e) => handleChange('streak', parseInt(e.target.value))} />
-                        </div>
+                    {/* OPTIONEEL: Progress Contribution - only show if Key Result is linked */}
+                    {formData.linkedKeyResultId && (() => {
+                      const linkedKR = data.keyResults.find(kr => kr.id === formData.linkedKeyResultId);
+                      if (!linkedKR) return null;
+                      
+                      return (
                         <div>
-                            <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-2">Frequency</label>
-                            <input type="text" className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main" 
-                                value="Daily" disabled />
+                          <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-2">
+                            Progress Contribution per Completion
+                          </label>
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="number"
+                              step={linkedKR.decimals === 0 ? 1 : linkedKR.decimals === 1 ? 0.1 : 0.01}
+                              className="flex-1 p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-primary text-text-main font-medium"
+                              value={formData.progressContribution || 1}
+                              onChange={(e) => handleChange('progressContribution', parseFloat(e.target.value) || 0)}
+                              placeholder="1"
+                              min="0"
+                            />
+                            <span className="text-sm font-medium text-text-secondary">
+                              {data.formatKeyResultValue(linkedKR, formData.progressContribution || 1)}
+                            </span>
+                          </div>
+                          <p className="text-xs text-text-tertiary mt-2">
+                            Each time you complete this habit, the Key Result "{linkedKR.title}" will increase by this amount.
+                            {linkedKR.measurementType === 'currency' && ' Example: €10 per completion'}
+                            {linkedKR.measurementType === 'number' && ' Example: 0.5 per completion'}
+                            {linkedKR.measurementType === 'percentage' && ' Example: 1% per completion'}
+                            {linkedKR.measurementType === 'weight' && ' Example: 0.1 kg per completion'}
+                            {linkedKR.measurementType === 'distance' && ' Example: 0.5 km per completion'}
+                            {linkedKR.measurementType === 'time' && ' Example: 1 hour per completion'}
+                            {linkedKR.measurementType === 'height' && ' Example: 0.01 m per completion'}
+                            {linkedKR.measurementType === 'pages' && ' Example: 5 pages per completion'}
+                            {linkedKR.measurementType === 'chapters' && ' Example: 1 chapter per completion'}
+                            {linkedKR.measurementType === 'custom' && ` Example: 1 ${linkedKR.customUnit || 'unit'} per completion`}
+                          </p>
+                        </div>
+                      );
+                    })()}
+
+                    {/* OPTIONEEL: Template Selector (only for new habits) */}
+                    {!editId && (
+                      <div>
+                        <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-2">
+                          Start from Template (Optional)
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setShowTemplateSelector(true)}
+                          className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 hover:bg-gray-100 transition-colors text-left flex items-center justify-between"
+                        >
+                          <span className="text-text-main">Selecteer template...</span>
+                          <span className="material-symbols-outlined text-text-tertiary">arrow_forward</span>
+                        </button>
+                      </div>
+                    )}
+
+                    {/* OPTIONEEL: Additional Settings */}
+                    <div className="pt-4 border-t border-gray-100">
+                        <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-3">Additional Settings (Optional)</label>
+                        
+                        <div className="grid grid-cols-2 gap-4 mb-4">
+                          <div>
+                            <label className="block text-xs font-medium text-text-secondary mb-2">
+                              Target Frequency (per week)
+                            </label>
+                            <input
+                              type="number"
+                              min="1"
+                              max="7"
+                              className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main"
+                              value={formData.targetFrequency || 7}
+                              onChange={(e) => handleChange('targetFrequency', parseInt(e.target.value) || 7)}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-text-secondary mb-2">
+                              Reminder Time
+                            </label>
+                            <input
+                              type="time"
+                              className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main"
+                              value={formData.reminderTime || ''}
+                              onChange={(e) => handleChange('reminderTime', e.target.value)}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4 mb-4">
+                          <div>
+                            <label className="block text-xs font-medium text-text-secondary mb-2">
+                              Category
+                            </label>
+                            <select
+                              className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main"
+                              value={formData.category || 'Personal'}
+                              onChange={(e) => handleChange('category', e.target.value)}
+                            >
+                              <option value="Health">Health</option>
+                              <option value="Productivity">Productivity</option>
+                              <option value="Learning">Learning</option>
+                              <option value="Personal">Personal</option>
+                              <option value="Fitness">Fitness</option>
+                              <option value="Social">Social</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-text-secondary mb-2">
+                              Color
+                            </label>
+                            <input
+                              type="color"
+                              className="w-full h-12 p-1 bg-gray-50 rounded-xl outline-none cursor-pointer"
+                              value={formData.color || '#8B5CF6'}
+                              onChange={(e) => handleChange('color', e.target.value)}
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-text-secondary mb-2">
+                            Notes / Reflections
+                          </label>
+                          <textarea
+                            className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main min-h-[100px]"
+                            value={formData.notes || ''}
+                            onChange={(e) => handleChange('notes', e.target.value)}
+                            placeholder="Add notes or reflections..."
+                          />
                         </div>
                     </div>
                 </div>
@@ -1185,11 +1261,11 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
         {type === 'objective' && (
             <div className="space-y-6 animate-fade-in-up">
                 
-                {/* Hero Card */}
+                {/* VERPLICHT: Hero Card - Title & Description */}
                 <div className="bg-gradient-to-br from-white to-gray-50 p-6 rounded-2xl shadow-soft border border-white">
                     <label className="block text-xs font-bold text-primary uppercase tracking-widest mb-3 flex items-center gap-2">
                         <span className="material-symbols-outlined text-[16px]">flag</span>
-                        Objective
+                        Objective <span className="text-red-500">*</span>
                     </label>
                     <textarea 
                         className="w-full text-3xl font-bold bg-transparent outline-none placeholder:text-gray-300 resize-none leading-tight" 
@@ -1198,13 +1274,14 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                         onChange={(e) => handleChange('title', e.target.value)} 
                         placeholder="What do you want to achieve?" 
                         autoFocus 
+                        required
                     />
                     <input 
                         type="text" 
                         className="w-full mt-4 text-base font-medium text-text-secondary bg-transparent outline-none placeholder:text-gray-400"
                         value={formData.description || ''} 
                         onChange={(e) => handleChange('description', e.target.value)} 
-                        placeholder="Add a brief description or 'why'..." 
+                        placeholder="Add a brief description or 'why' (optional)..." 
                     />
                 </div>
 
@@ -1225,24 +1302,27 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                   </div>
                 )}
 
-                {/* Context Switcher */}
+                {/* OPTIONEEL: Context Switcher */}
                 {data.showCategory && (
-                    <div className="bg-white p-2 rounded-2xl shadow-sm border border-slate-100 flex">
-                        {['professional', 'personal'].map((cat) => (
-                            <button
-                                key={cat}
-                                onClick={() => handleChange('category', cat)}
-                                className={`flex-1 py-3 rounded-xl text-sm font-bold capitalize transition-all ${formData.category === cat ? 'bg-primary/10 text-primary shadow-sm' : 'text-text-tertiary hover:bg-gray-50'}`}
-                            >
-                                {cat}
-                            </button>
-                        ))}
+                    <div className="bg-white p-2 rounded-2xl shadow-sm border border-slate-100">
+                        <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2 px-2">Category (Optional)</label>
+                        <div className="flex">
+                            {['professional', 'personal'].map((cat) => (
+                                <button
+                                    key={cat}
+                                    onClick={() => handleChange('category', cat)}
+                                    className={`flex-1 py-3 rounded-xl text-sm font-bold capitalize transition-all ${formData.category === cat ? 'bg-primary/10 text-primary shadow-sm' : 'text-text-tertiary hover:bg-gray-50'}`}
+                                >
+                                    {cat}
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 )}
 
-                {/* Meta Details */}
+                {/* OPTIONEEL: Status */}
                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 group hover:border-primary/30 transition-colors">
-                    <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Status</label>
+                    <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Initial Status (Optional)</label>
                     <select className="w-full bg-transparent font-semibold outline-none text-text-main appearance-none cursor-pointer" 
                         value={formData.status || 'On Track'} onChange={(e) => handleChange('status', e.target.value)}>
                         <option value="On Track">🟢 On Track</option>
@@ -1250,6 +1330,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                         <option value="Off Track">🔴 Off Track</option>
                         <option value="No status">⚪ No status</option>
                     </select>
+                    <p className="text-xs text-text-tertiary mt-2">Status will be determined by Key Result updates</p>
                 </div>
 
                 {/* Timeline Dates - VERPLICHT */}
@@ -1466,11 +1547,11 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                     </div>
                 )}
 
-                {/* Life Area Card */}
+                {/* OPTIONEEL: Life Area Card */}
                 {data.lifeAreas.length > 0 && (
                     <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
                         <div className="flex items-center justify-between mb-2">
-                            <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider">Life Area</label>
+                            <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider">Life Area (Optional)</label>
                             <button
                                 type="button"
                                 onClick={() => setShowLifeAreaModal(true)}
@@ -1663,10 +1744,11 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                     </div>
                 </div>
 
+                {/* VERPLICHT: Title */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                     <label className="block text-xs font-bold text-primary uppercase tracking-widest mb-3 flex items-center gap-2">
                         <span className="material-symbols-outlined text-[16px]">target</span>
-                        Measurable Result
+                        Measurable Result <span className="text-red-500">*</span>
                     </label>
                     <input 
                         type="text" 
@@ -1675,12 +1757,13 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                         onChange={(e) => handleChange('title', e.target.value)} 
                         placeholder="e.g. Increase NPS to 50" 
                         autoFocus 
+                        required
                     />
                 </div>
 
-                {/* Target Configuration */}
+                {/* VERPLICHT: Target Configuration */}
                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                    <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-4">Target Configuration</label>
+                    <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-4">Target Configuration <span className="text-red-500">*</span></label>
                     
                     {/* Measurement Type Selection */}
                     <div className="mb-6">
@@ -1802,10 +1885,10 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                         </select>
                     </div>
 
-                    {/* Starting Value and Target Value */}
+                    {/* VERPLICHT: Starting Value and Target Value */}
                     <div className="space-y-4">
                         <div>
-                            <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Starting value <span className="text-red-500">*</span></label>
+                            <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Current Value <span className="text-red-500">*</span></label>
                             <div className="relative">
                                 <input 
                                     type="number" 
@@ -1855,8 +1938,10 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                     </div>
                 </div>
 
+                {/* OPTIONEEL: Initial Status */}
                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                     <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Initial Status</label>
+                     <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Initial Status (Optional)</label>
+                     <p className="text-xs text-text-tertiary mb-3">Status will be determined by status updates</p>
                      <div className="flex gap-2">
                         {['On Track', 'At Risk', 'Off Track'].map(s => (
                              <button 
@@ -1870,9 +1955,9 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                      </div>
                 </div>
 
-                {/* Timeline Dates - VERPLICHT */}
+                {/* VERPLICHT: Timeline Dates */}
                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                    <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-4">Timeline Dates <span className="text-red-500">*</span></label>
+                    <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-4">Timeline Dates <span className="text-red-500">*</span> <span className="text-xs font-normal text-text-tertiary normal-case">(Required for Goal Timeline view)</span></label>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Start Date <span className="text-red-500">*</span></label>
@@ -1900,9 +1985,10 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                     </p>
                 </div>
 
-                {/* Owner Card */}
+                {/* OPTIONEEL: Owner Card */}
                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                    <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Owner</label>
+                    <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Owner (Optional)</label>
+                    <p className="text-xs text-text-tertiary mb-2">Defaults to parent Objective owner if not set</p>
                     <button 
                         onClick={() => setShowOwnerModal(true)}
                         className="w-full flex items-center gap-4 p-3 rounded-xl hover:bg-gray-50 transition-colors border border-slate-100"
@@ -1924,9 +2010,6 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                         </div>
                         <span className="material-symbols-outlined text-text-tertiary">chevron_right</span>
                     </button>
-                    <p className="text-xs text-text-tertiary mt-2">
-                        Defaults to parent Objective owner if not set
-                    </p>
                 </div>
 
                 {!editId && parentId && (
@@ -1941,17 +2024,20 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
         {/* FRIEND FORM */}
         {type === 'friend' && (
             <div className="space-y-6">
+                {/* VERPLICHT: Name */}
                 <div className="bg-white p-6 rounded-3xl shadow-soft border border-slate-100 flex flex-col items-center gap-4">
+                    <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-1">Friend's Name <span className="text-red-500">*</span></label>
                      <div className="size-20 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden border-4 border-white shadow-sm">
                          <span className="material-symbols-outlined text-[40px] text-gray-300">person_add</span>
                      </div>
                      <input type="text" className="w-full text-center text-2xl font-bold bg-transparent outline-none placeholder:text-gray-300" 
-                        value={formData.name || ''} onChange={(e) => handleChange('name', e.target.value)} placeholder="New Friend's Name" autoFocus />
+                        value={formData.name || ''} onChange={(e) => handleChange('name', e.target.value)} placeholder="New Friend's Name" autoFocus required />
                 </div>
 
                 <div className="space-y-4">
+                     {/* OPTIONEEL: Relationship Type */}
                      <div className="bg-white p-4 rounded-2xl border border-slate-100">
-                        <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Relationship</label>
+                        <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Relationship Type (Optional)</label>
                         <div className="flex flex-wrap gap-2">
                             {['friend', 'professional', 'family', 'mentor'].map(role => (
                                 <button key={role} onClick={() => handleChange('roleType', role)} className={`px-4 py-2 rounded-xl text-sm font-semibold capitalize transition-colors ${formData.roleType === role ? 'bg-primary text-white' : 'bg-gray-50 text-text-secondary'}`}>
@@ -1960,13 +2046,15 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                             ))}
                         </div>
                      </div>
+                     {/* OPTIONEEL: Label */}
                      <div className="bg-white p-4 rounded-2xl border border-slate-100">
-                        <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Label</label>
+                        <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Label (Optional)</label>
                         <input type="text" className="w-full bg-gray-50 p-3 rounded-xl outline-none font-medium" 
                             value={formData.role || ''} onChange={(e) => handleChange('role', e.target.value)} placeholder="e.g. Bestie, Gym Buddy" />
                      </div>
+                     {/* OPTIONEEL: Location */}
                      <div className="bg-white p-4 rounded-2xl border border-slate-100">
-                        <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Location</label>
+                        <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Location (Optional)</label>
                         <input type="text" className="w-full bg-gray-50 p-3 rounded-xl outline-none font-medium" 
                             value={formData.location || ''} onChange={(e) => handleChange('location', e.target.value)} placeholder="e.g. San Francisco" />
                      </div>
@@ -2026,9 +2114,9 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                     />
                 </div>
 
-                {/* Icon Selection */}
+                {/* OPTIONEEL: Icon Selection */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                    <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-4">Icon</label>
+                    <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-4">Icon (Optional)</label>
                     <div className="flex gap-2 mb-3">
                         <input 
                             type="text" 
@@ -2067,9 +2155,9 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                     </div>
                 </div>
 
-                {/* Color Selection */}
+                {/* OPTIONEEL: Color Selection */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                    <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-4">Color</label>
+                    <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-4">Color (Optional)</label>
                     
                     {/* Predefined Colors */}
                     <div className="grid grid-cols-4 gap-3 mb-4">
@@ -2124,9 +2212,10 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                     </div>
                 </div>
 
-                {/* Image URL (Optional) */}
+                {/* OPTIONEEL: Image URL */}
                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
                     <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-2">Image URL (Optional)</label>
+                    <p className="text-xs text-text-tertiary mb-2">Add a custom image URL to replace the icon</p>
                     <input 
                         type="text" 
                         className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main" 
@@ -2142,11 +2231,11 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
          {/* VISION FORM */}
          {type === 'vision' && (
             <div className="space-y-6 animate-fade-in-up">
-                {/* Vision Statement */}
+                {/* VERPLICHT: Vision Statement */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                     <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-3 flex items-center gap-2">
                         <span className="material-symbols-outlined text-[16px]">lightbulb</span>
-                        Vision Statement
+                        Vision Statement <span className="text-red-500">*</span>
                     </label>
                     <textarea 
                         className="w-full p-4 bg-gray-50 rounded-xl outline-none font-medium text-text-main placeholder:text-gray-400 resize-none leading-relaxed" 
@@ -2161,10 +2250,10 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                     </p>
                 </div>
 
-                {/* Life Area Selection (only if creating new vision) */}
+                {/* VERPLICHT: Life Area Selection (only if creating new vision) */}
                 {!editId && data.lifeAreas.length > 0 && (
                     <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                        <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-2">Life Area</label>
+                        <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-2">Life Area <span className="text-red-500">*</span></label>
                         <select 
                             className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main appearance-none" 
                             value={formData.lifeAreaId || ''} 
@@ -2251,17 +2340,21 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
          {/* PLACE FORM */}
          {type === 'place' && (
             <div className="space-y-6">
+                 {/* VERPLICHT: Name */}
                  <div className="bg-white p-6 rounded-3xl shadow-soft border border-slate-100">
+                     <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Place Name <span className="text-red-500">*</span></label>
                      <div className="flex items-center gap-4 mb-4">
                          <div className="size-12 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center">
                              <span className="material-symbols-outlined">storefront</span>
                          </div>
                          <input type="text" className="flex-1 text-xl font-bold outline-none placeholder:text-gray-300" 
-                            value={formData.name || ''} onChange={(e) => handleChange('name', e.target.value)} placeholder="Place Name" autoFocus />
+                            value={formData.name || ''} onChange={(e) => handleChange('name', e.target.value)} placeholder="Place Name" autoFocus required />
                      </div>
+                     {/* OPTIONEEL: Address */}
                      <input type="text" className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main mb-4" 
-                        value={formData.address || ''} onChange={(e) => handleChange('address', e.target.value)} placeholder="Address or Area" />
-                     
+                        value={formData.address || ''} onChange={(e) => handleChange('address', e.target.value)} placeholder="Address or Area (optional)" />
+                     {/* OPTIONEEL: Type */}
+                     <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Type (Optional)</label>
                      <div className="flex gap-2">
                          {['Coffee', 'Food', 'Gym', 'Park'].map(t => (
                              <button key={t} onClick={() => handleChange('type', t)} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-colors ${formData.type === t ? 'bg-text-main text-white' : 'bg-gray-50 text-text-secondary'}`}>
@@ -2276,8 +2369,9 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
         {/* TIME SLOT FORM */}
         {type === 'timeSlot' && (
             <div className="space-y-6 animate-fade-in-up">
+                {/* VERPLICHT: Title */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                    <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-3">Title</label>
+                    <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-3">Title <span className="text-red-500">*</span></label>
                     <input 
                         type="text" 
                         className="w-full p-4 bg-gray-50 rounded-xl outline-none font-bold text-text-main placeholder:text-gray-400" 
@@ -2285,11 +2379,13 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                         onChange={(e) => handleChange('title', e.target.value)} 
                         placeholder="e.g. Deep Work Session" 
                         autoFocus 
+                        required
                     />
                 </div>
 
+                {/* VERPLICHT: Date */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                    <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-3">Date</label>
+                    <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-3">Date <span className="text-red-500">*</span></label>
                     <input 
                         type="date" 
                         className="w-full p-4 bg-gray-50 rounded-xl outline-none font-medium text-text-main" 
@@ -2299,9 +2395,10 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                     />
                 </div>
 
+                {/* VERPLICHT: Start & End Time */}
                 <div className="grid grid-cols-2 gap-4">
                     <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                        <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-3">Start Time</label>
+                        <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-3">Start Time <span className="text-red-500">*</span></label>
                         <input 
                             type="time" 
                             className="w-full p-4 bg-gray-50 rounded-xl outline-none font-medium text-text-main" 
@@ -2311,7 +2408,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                         />
                     </div>
                     <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                        <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-3">End Time</label>
+                        <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-3">End Time <span className="text-red-500">*</span></label>
                         <input 
                             type="time" 
                             className="w-full p-4 bg-gray-50 rounded-xl outline-none font-medium text-text-main" 
@@ -2322,8 +2419,9 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                     </div>
                 </div>
 
+                {/* OPTIONEEL: Type */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                    <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-3">Type</label>
+                    <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-3">Type (Optional)</label>
                     <select 
                         className="w-full p-4 bg-gray-50 rounded-xl outline-none font-medium text-text-main" 
                         value={formData.type || 'deep-work'} 
@@ -2337,8 +2435,9 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                     </select>
                 </div>
 
+                {/* OPTIONEEL: Color */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                    <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-3">Color</label>
+                    <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-3">Color (Optional)</label>
                     <input 
                         type="color" 
                         className="w-full h-12 rounded-xl cursor-pointer" 
@@ -2347,9 +2446,10 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                     />
                 </div>
 
+                {/* OPTIONEEL: Link to Goals */}
                 {data.objectives.length > 0 && (
                     <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                        <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-3">Link to Key Result (Optional)</label>
+                        <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-3">Link to Goals (Optional)</label>
                         <select 
                             className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main appearance-none" 
                             value={formData.keyResultId || ''} 
@@ -2425,10 +2525,11 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                     </div>
                 )}
 
-                {/* Life Area Linkage - Tertiary, disabled if key result or objective is set */}
+                {/* OPTIONEEL: Life Area Linkage - Tertiary, disabled if key result or objective is set */}
                 {data.lifeAreas.length > 0 && (
                     <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                         <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-3">Link to Life Area (Optional)</label>
+                        <p className="text-xs text-text-tertiary mb-2">Automatically set when linking to Key Result or Objective</p>
                         <select 
                             className="w-full p-4 bg-gray-50 rounded-xl outline-none font-medium text-text-main disabled:opacity-50 disabled:cursor-not-allowed" 
                             value={formData.lifeAreaId || ''} 

@@ -188,7 +188,8 @@ export const Retrospective: React.FC<RetrospectiveProps> = ({
         onBack={onBack}
       />
 
-      <main className="flex-1 overflow-y-auto no-scrollbar pb-32 px-6 pt-6">
+      <main className="flex-1 overflow-y-auto no-scrollbar pb-32 lg:pb-8 px-6 lg:px-8 xl:px-12 pt-6">
+        <div className="max-w-6xl mx-auto">
         {/* Existing Retrospectives List */}
         {allRetrospectives.length > 0 && (
           <div className="mb-6">
@@ -433,6 +434,7 @@ export const Retrospective: React.FC<RetrospectiveProps> = ({
             Add New Retrospective
           </button>
         )}
+        </div>
       </main>
     </div>
   );

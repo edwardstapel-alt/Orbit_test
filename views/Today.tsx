@@ -331,7 +331,7 @@ export const Today: React.FC<TodayProps> = ({ onEdit, onNavigate, onMenuClick, o
         );
       })()}
 
-      <main className="flex-1 overflow-y-auto no-scrollbar pb-32 px-6 pt-6">
+      <main className="flex-1 overflow-y-auto no-scrollbar pb-32 lg:pb-8 px-6 lg:px-8 xl:px-12 pt-6">
         {/* Entity Filter - Compact Icon Toggles */}
             <div className="mb-3">
               <EntityFilter
@@ -502,6 +502,7 @@ export const Today: React.FC<TodayProps> = ({ onEdit, onNavigate, onMenuClick, o
         </section>
 
         {/* Dagdelen met Tasks */}
+        <div className="lg:grid lg:grid-cols-2 xl:grid-cols-3 lg:gap-6">
         {sortedDayParts.map(dayPart => {
           const partTasks = tasksByDayPart[dayPart.id] || [];
           const hasContent = partTasks.length > 0;
@@ -512,7 +513,7 @@ export const Today: React.FC<TodayProps> = ({ onEdit, onNavigate, onMenuClick, o
           }
 
           return (
-            <section key={dayPart.id} className="mb-6">
+            <section key={dayPart.id} className="mb-6 lg:mb-0">
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h2 className="text-lg font-bold text-text-main">{dayPart.name}</h2>
@@ -624,6 +625,7 @@ export const Today: React.FC<TodayProps> = ({ onEdit, onNavigate, onMenuClick, o
             </section>
           );
         })}
+        </div>
 
       </main>
 

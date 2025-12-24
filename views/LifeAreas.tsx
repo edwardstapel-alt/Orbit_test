@@ -29,10 +29,10 @@ export const LifeAreas: React.FC<LifeAreasProps> = ({ onNavigate, onMenuClick, o
         showSearch={true}
       />
 
-      <main className="flex-1 overflow-y-auto no-scrollbar pb-32 px-6 md:px-12 lg:px-16 pt-6">
+      <main className="flex-1 overflow-y-auto no-scrollbar pb-32 lg:pb-8 px-6 md:px-12 lg:px-8 xl:px-12 pt-6">
         <div className="max-w-6xl mx-auto">
         {/* Life Areas List */}
-        <div className="space-y-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 lg:gap-6">
           {lifeAreas.length === 0 ? (
             <div className="bg-white rounded-3xl p-8 border-2 border-dashed border-slate-200 text-center">
               <div className="size-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">

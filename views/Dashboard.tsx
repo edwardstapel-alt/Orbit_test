@@ -210,7 +210,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
   }, []);
 
   return (
-    <div className="flex flex-col w-full h-full overflow-y-auto no-scrollbar pb-32">
+    <div className="flex flex-col w-full h-full overflow-y-auto no-scrollbar pb-32 lg:pb-8">
       <TopNav 
         title={`Focus, ${userProfile.firstName || 'there'}`} 
         subtitle="Good Morning" 
@@ -339,17 +339,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
             </div>
         )}
 
-        {filteredObjectives.map(obj => (
-            <ObjectiveCard 
-                key={obj.id} 
-                objective={obj} 
-                keyResults={keyResults.filter(kr => kr.objectiveId === obj.id)}
-                onView={() => onViewObjective(obj.id)}
-                onEdit={onEdit}
-                onAddKR={() => onEdit('keyResult', undefined, obj.id)}
-                onKeyResultClick={(krId) => setSelectedKeyResultId(krId)}
-            />
-        ))}
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+          {filteredObjectives.map(obj => (
+              <ObjectiveCard 
+                  key={obj.id} 
+                  objective={obj} 
+                  keyResults={keyResults.filter(kr => kr.objectiveId === obj.id)}
+                  onView={() => onViewObjective(obj.id)}
+                  onEdit={onEdit}
+                  onAddKR={() => onEdit('keyResult', undefined, obj.id)}
+                  onKeyResultClick={(krId) => setSelectedKeyResultId(krId)}
+              />
+          ))}
+        </div>
         </div>
       </section>
 
@@ -386,13 +388,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
           {filteredTasks.length === 0 ? (
               <div className="p-8 text-center text-text-tertiary text-sm">No tasks for this category.</div>
           ) : (
-            <div className="flex flex-col">
+            <div className="flex flex-col lg:grid lg:grid-cols-2 lg:divide-x lg:divide-y-0 divide-y divide-gray-100">
                 {filteredTasks.map((item) => {
                   const isRemoving = removingTasks.has(item.id);
                   return (
                 <div 
                   key={item.id} 
-                  className={`group flex items-center gap-4 p-5 border-b border-gray-100 last:border-0 hover:bg-gray-50/50 cursor-pointer select-none ${
+                  className={`group flex items-center gap-4 p-5 lg:border-0 border-b border-gray-100 last:border-0 hover:bg-gray-50/50 cursor-pointer select-none ${
                     isRemoving 
                       ? 'animate-slide-out-left pointer-events-none overflow-hidden' 
                       : ''
@@ -450,10 +452,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
             <span className="material-symbols-outlined text-sm">chevron_right</span>
           </button>
         </div>
-        <div className="flex overflow-x-auto no-scrollbar px-6 md:px-12 lg:px-16 pb-6 gap-4 snap-x">
+        <div className="flex overflow-x-auto lg:grid lg:grid-cols-4 xl:grid-cols-5 lg:overflow-x-visible no-scrollbar px-6 md:px-12 lg:px-16 pb-6 gap-4 snap-x lg:snap-none">
             <button 
               onClick={() => onEdit('habit')} 
-              className="snap-start flex flex-col items-center justify-center gap-2 p-4 rounded-3xl bg-white shadow-sm border-2 border-dashed border-slate-200 shrink-0 min-w-[140px] aspect-square cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors group"
+              className="snap-start lg:snap-none flex flex-col items-center justify-center gap-2 p-4 rounded-3xl bg-white shadow-sm border-2 border-dashed border-slate-200 shrink-0 lg:shrink min-w-[140px] lg:min-w-0 aspect-square cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors group"
             >
               <span className="material-symbols-outlined text-3xl text-text-tertiary group-hover:text-primary transition-colors">add_circle</span>
               <span className="text-xs font-semibold text-text-secondary group-hover:text-primary transition-colors">Add Habit</span>
@@ -466,7 +468,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
                   e.preventDefault();
                   onEdit('habit', habit.id);
                 }}
-                className="snap-start flex flex-col items-start gap-3 p-4 rounded-3xl bg-white shadow-soft shrink-0 min-w-[140px] aspect-square justify-between group hover:shadow-md transition-all border border-transparent hover:border-gray-100 cursor-pointer"
+                className="snap-start lg:snap-none flex flex-col items-start gap-3 p-4 rounded-3xl bg-white shadow-soft shrink-0 lg:shrink min-w-[140px] lg:min-w-0 aspect-square justify-between group hover:shadow-md transition-all border border-transparent hover:border-gray-100 cursor-pointer"
             >
                 <div className="size-12 rounded-2xl bg-gray-100 flex items-center justify-center text-text-secondary group-hover:scale-110 group-hover:bg-primary-light group-hover:text-primary transition-all duration-300">
                 <span className="material-symbols-outlined">{habit.icon}</span>
