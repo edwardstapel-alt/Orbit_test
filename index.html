@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
     <link rel="manifest" href="/manifest.json" />
     <!-- Google Identity Services -->
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://accounts.google.com/gsi/client" async defer onerror="console.error('Failed to load Google Identity Services')"></script>
     <script>
       // Service Worker registration - only register if sw.js exists (production)
       if ('serviceWorker' in navigator) {
@@ -759,15 +759,6 @@
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
       }
     </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "react": "https://esm.sh/react@^19.2.3"
-  }
-}
-</script>
   </head>
   <body>
     <div id="root"></div>
