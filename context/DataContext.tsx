@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { Task, Habit, Friend, Objective, KeyResult, Place, TeamMember, DataContextType, UserProfile, LifeArea, Vision, TimeSlot, DayPart, StatusUpdate, Conflict, ConflictResolution, ConflictResolutionConfig, Reminder, Notification, NotificationSettings, EntityType, TaskTemplate, ObjectiveTemplate, QuickAction, View, Review, Retrospective, ReviewInsight, ActionPlanProgress } from '../types';
 import { syncService, DataContextCallbacks } from '../utils/syncService';
 import { importGoogleTasks, detectDuplicateAppTasks, mergeAppTasks, getAccessToken } from '../utils/googleSync';
@@ -272,6 +272,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
     return loaded;
   });
+  
+  // Ref to track deletedTaskIds for use in closures (real-time listeners)
+  const deletedTaskIdsRef = useRef(deletedTaskIds);
+  useEffect(() => {
+    deletedTaskIdsRef.current = deletedTaskIds;
+  }, [deletedTaskIds]);
 
   // Helper function to reduce saturation by 50%
   const reduceSaturation = useCallback((color: string): string => {
@@ -526,45 +532,54 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 return Array.from(merged.values());
               };
 
-              // Sync deletedTaskIds from Firebase first
+              // Sync deletedTaskIds from Firebase first - CRITICAL: calculate merged list before tasks sync
+              let mergedDeletedTaskIds: Array<{ id: string; deletedAt: string }> = [...deletedTaskIds];
+              
               if (syncResult.data.deletedTaskIds) {
-                setDeletedTaskIds(prev => {
-                  // Firebase kan entries hebben (nieuwe format) of ids (oude format)
-                  const firebaseEntries = syncResult.data.deletedTaskIds.entries || [];
-                  const firebaseIds = syncResult.data.deletedTaskIds.ids || [];
-                  
-                  // Migrate oude format naar nieuwe format
-                  const migratedFirebase: Array<{ id: string; deletedAt: string }> = [];
-                  if (firebaseEntries.length > 0) {
-                    migratedFirebase.push(...firebaseEntries);
-                  } else if (firebaseIds.length > 0) {
-                    // Oude format: array van strings, converteer naar nieuwe format
-                    const now = new Date().toISOString();
-                    migratedFirebase.push(...firebaseIds.map((id: string) => ({ id, deletedAt: now })));
-                  }
-                  
-                  // Merge: combine local and Firebase deleted IDs, voorkom duplicates
-                  const mergedMap = new Map<string, { id: string; deletedAt: string }>();
-                  prev.forEach(entry => mergedMap.set(entry.id, entry));
-                  migratedFirebase.forEach(entry => {
-                    if (!mergedMap.has(entry.id)) {
+                // Firebase kan entries hebben (nieuwe format) of ids (oude format)
+                const firebaseEntries = syncResult.data.deletedTaskIds.entries || [];
+                const firebaseIds = syncResult.data.deletedTaskIds.ids || [];
+                
+                // Migrate oude format naar nieuwe format
+                const migratedFirebase: Array<{ id: string; deletedAt: string }> = [];
+                if (firebaseEntries.length > 0) {
+                  migratedFirebase.push(...firebaseEntries);
+                } else if (firebaseIds.length > 0) {
+                  // Oude format: array van strings, converteer naar nieuwe format
+                  const now = new Date().toISOString();
+                  migratedFirebase.push(...firebaseIds.map((id: string) => ({ id, deletedAt: now })));
+                }
+                
+                // Merge: combine local and Firebase deleted IDs, voorkom duplicates
+                const mergedMap = new Map<string, { id: string; deletedAt: string }>();
+                deletedTaskIds.forEach(entry => mergedMap.set(entry.id, entry));
+                migratedFirebase.forEach(entry => {
+                  if (!mergedMap.has(entry.id)) {
+                    mergedMap.set(entry.id, entry);
+                  } else {
+                    // Keep the oldest deletedAt timestamp
+                    const existing = mergedMap.get(entry.id)!;
+                    if (new Date(entry.deletedAt) < new Date(existing.deletedAt)) {
                       mergedMap.set(entry.id, entry);
-                    } else {
-                      // Keep the oldest deletedAt timestamp
-                      const existing = mergedMap.get(entry.id)!;
-                      if (new Date(entry.deletedAt) < new Date(existing.deletedAt)) {
-                        mergedMap.set(entry.id, entry);
-                      }
                     }
-                  });
-                  
-                  return Array.from(mergedMap.values());
+                  }
                 });
+                
+                mergedDeletedTaskIds = Array.from(mergedMap.values());
+                
+                // Update state
+                setDeletedTaskIds(mergedDeletedTaskIds);
               }
 
+              // Merge tasks, excluding deleted ones - use mergedDeletedTaskIds to ensure we have the latest
               if (syncResult.data.tasks.length > 0) {
-                const deletedIds = deletedTaskIds.map(e => e.id);
-                setTasks(prev => mergeArrays(prev, syncResult.data.tasks, deletedIds));
+                const deletedIds = mergedDeletedTaskIds.map(e => e.id);
+                setTasks(prev => {
+                  // Filter out deleted tasks from both local and Firebase before merging
+                  const filteredLocal = prev.filter(t => !deletedIds.includes(t.id));
+                  const filteredFirebase = syncResult.data.tasks.filter(t => !deletedIds.includes(t.id));
+                  return mergeArrays(filteredLocal, filteredFirebase, []);
+                });
               }
               if (syncResult.data.habits.length > 0) {
                 setHabits(prev => mergeArrays(prev, syncResult.data.habits));
@@ -695,8 +710,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           // Don't restore data if we're in the middle of clearing
           if (isClearingData) return;
           if (firebaseTasks.length > 0) {
-            const deletedIds = deletedTaskIds.map(e => e.id);
-            setTasks(prev => mergeArrays(prev, firebaseTasks, deletedIds));
+            setTasks(prev => {
+              // Get current deletedTaskIds from ref (always up-to-date)
+              const currentDeletedIds = deletedTaskIdsRef.current.map(e => e.id);
+              // Filter out deleted tasks from both local and Firebase before merging
+              const filteredLocal = prev.filter(t => !currentDeletedIds.includes(t.id));
+              const filteredFirebase = firebaseTasks.filter(t => !currentDeletedIds.includes(t.id));
+              return mergeArrays(filteredLocal, filteredFirebase, []);
+            });
           }
         }));
 
