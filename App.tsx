@@ -483,7 +483,7 @@ export default function App() {
 
   return (
     <DataProvider>
-        <div className="flex min-h-screen bg-background">
+        <div className="block lg:flex min-h-screen bg-background">
           {/* Sidebar - Desktop only */}
           <Sidebar 
             currentView={currentView} 
@@ -493,9 +493,9 @@ export default function App() {
           />
           
           {/* Main Content */}
-          <div className="flex-1 flex flex-col lg:ml-0">
-            <div className="flex lg:justify-center min-h-screen bg-background md:bg-gray-100">
-              <div className="w-full lg:max-w-[1400px] xl:max-w-[1600px] h-screen bg-background relative lg:shadow-2xl overflow-hidden flex flex-col">
+          <div className="w-full lg:flex-1 flex flex-col">
+            <div className="flex min-h-screen bg-background md:bg-gray-100">
+              <div className="w-full h-screen bg-background relative overflow-hidden flex flex-col">
                   <div 
                     key={currentView} 
                     className="flex-1 overflow-y-auto"
