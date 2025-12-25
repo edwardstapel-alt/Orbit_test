@@ -490,7 +490,13 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (!isMounted) return;
       
       if (user) {
-        console.log('✅ User authenticated:', user.email);
+        console.log('✅ User authenticated:', {
+          email: user.email,
+          uid: user.uid,
+          displayName: user.displayName,
+          providerId: user.providerData[0]?.providerId,
+          timestamp: new Date().toISOString()
+        });
         
         // Prevent multiple simultaneous syncs
         if (syncInProgress) {
@@ -499,7 +505,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
         
         syncInProgress = true;
-        console.log('🔄 Starting Firebase sync...');
+        console.log('🔄 Starting Firebase sync for user:', user.uid);
         
         try {
           // Initial sync from Firebase
@@ -709,16 +715,61 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         unsubscribers.push(watchFirebaseChanges('tasks', (firebaseTasks) => {
           // Don't restore data if we're in the middle of clearing
           if (isClearingData) return;
-          if (firebaseTasks.length > 0) {
-            setTasks(prev => {
-              // Get current deletedTaskIds from ref (always up-to-date)
-              const currentDeletedIds = deletedTaskIdsRef.current.map(e => e.id);
-              // Filter out deleted tasks from both local and Firebase before merging
-              const filteredLocal = prev.filter(t => !currentDeletedIds.includes(t.id));
-              const filteredFirebase = firebaseTasks.filter(t => !currentDeletedIds.includes(t.id));
-              return mergeArrays(filteredLocal, filteredFirebase, []);
+          console.log('📥 Firebase tasks listener triggered:', {
+            firebaseTasksCount: firebaseTasks.length,
+            firebaseTaskIds: firebaseTasks.map(t => t.id),
+            timestamp: new Date().toISOString()
+          });
+          
+          // Always merge, even if firebaseTasks is empty (to handle deletions)
+          setTasks(prev => {
+            // Get current deletedTaskIds from ref (always up-to-date)
+            const currentDeletedIds = deletedTaskIdsRef.current.map(e => e.id);
+            console.log('🔄 Merging tasks:', {
+              localCount: prev.length,
+              firebaseCount: firebaseTasks.length,
+              deletedIdsCount: currentDeletedIds.length,
+              deletedIds: currentDeletedIds,
+              localTaskIds: prev.map(t => t.id),
+              firebaseTaskIds: firebaseTasks.map(t => t.id)
             });
-          }
+            
+            // Filter out deleted tasks from both local and Firebase before merging
+            const filteredLocal = prev.filter(t => !currentDeletedIds.includes(t.id));
+            const filteredFirebase = firebaseTasks.filter(t => !currentDeletedIds.includes(t.id));
+            
+            // Merge arrays: Firebase wins on conflict (newer data)
+            const merged = new Map<string, Task>();
+            
+            // First add all local items
+            filteredLocal.forEach(item => {
+              merged.set(item.id, item);
+            });
+            
+            // Then add/update with Firebase items (Firebase wins on conflict)
+            filteredFirebase.forEach(item => {
+              merged.set(item.id, item);
+            });
+            
+            const mergedArray = Array.from(merged.values());
+            
+            // Find new tasks from Firebase
+            const newTasks = filteredFirebase.filter(f => !prev.some(p => p.id === f.id));
+            
+            console.log('✅ Tasks merged:', {
+              filteredLocalCount: filteredLocal.length,
+              filteredFirebaseCount: filteredFirebase.length,
+              mergedCount: mergedArray.length,
+              newTaskIds: newTasks.map(t => t.id),
+              newTaskTitles: newTasks.map(t => t.title)
+            });
+            
+            if (newTasks.length > 0) {
+              console.log('🎉 New tasks detected from Firebase:', newTasks.map(t => ({ id: t.id, title: t.title })));
+            }
+            
+            return mergedArray;
+          });
         }));
 
         unsubscribers.push(watchFirebaseChanges('objectives', (firebaseObjectives) => {
@@ -850,14 +901,30 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       ...item,
       createdAt: item.createdAt || new Date().toISOString()
     };
+    console.log('➕ Adding task:', {
+      id: taskWithTimestamp.id,
+      title: taskWithTimestamp.title,
+      isAuthenticated: isAuthenticated(),
+      timestamp: new Date().toISOString()
+    });
     setTasks([...tasks, taskWithTimestamp]);
     // Auto-sync to Google Tasks
     syncService.queueSync('task', 'create', item.id, item);
     // Auto-sync to Firebase (async, fire and forget)
     if (isAuthenticated()) {
-      syncEntityToFirebase('tasks', item, item.id).catch(error => {
-        console.error('Error syncing task to Firebase:', error);
-      });
+      syncEntityToFirebase('tasks', taskWithTimestamp, taskWithTimestamp.id)
+        .then(result => {
+          console.log('✅ Task synced to Firebase:', {
+            taskId: taskWithTimestamp.id,
+            success: result.success,
+            error: result.error
+          });
+        })
+        .catch(error => {
+          console.error('❌ Error syncing task to Firebase:', error);
+        });
+    } else {
+      console.warn('⚠️ Cannot sync task to Firebase: user not authenticated');
     }
   };
   const updateTask = (item: Task) => {

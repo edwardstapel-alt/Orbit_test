@@ -323,10 +323,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
       )}
 
       {/* OKRs (Objectives) */}
-      <section className="w-full mt-8 px-6 md:px-12 lg:px-8">
-        <div className="w-full">
-        <div className="flex items-baseline justify-between mb-4">
-          <h3 className="text-text-main text-lg font-bold tracking-tight">Objectives & Key Results</h3>
+      <section className="w-full mt-16 px-6 md:px-12 lg:px-8">
+        <div className="w-full bg-gradient-to-br from-white via-gray-50/80 to-gray-50/50 rounded-3xl p-8 lg:p-10 border-2 border-gray-200/60 shadow-lg">
+        <div className="flex items-baseline justify-between mb-8 pb-4 border-b border-gray-200/50">
+          <div className="flex items-center gap-3">
+            <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center">
+              <span className="material-symbols-outlined text-primary text-xl">flag</span>
+            </div>
+            <div>
+              <h3 className="text-text-main text-2xl font-bold tracking-tight mb-1">Objectives & Key Results</h3>
+              <p className="text-sm text-text-tertiary">Your strategic goals and measurable outcomes</p>
+            </div>
+          </div>
           <button className="text-primary text-sm font-medium hover:opacity-80 transition-opacity" onClick={() => setShowAddObjectiveModal(true)}>
             + Add Goal
           </button>
@@ -356,11 +364,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
       </section>
 
       {/* Daily Focus */}
-      <section className="px-6 md:px-12 lg:px-8 mt-4">
-        <div className="w-full">
-        <div className="flex items-center justify-between mb-4 px-1">
+      <section className="px-6 md:px-12 lg:px-8 mt-16">
+        <div className="w-full bg-gradient-to-br from-white via-blue-50/40 to-blue-50/30 rounded-3xl p-8 lg:p-10 border-2 border-blue-200/60 shadow-lg">
+        <div className="flex items-center justify-between mb-8 pb-4 border-b border-blue-200/50 px-1">
           <div className="flex items-center gap-3">
-            <h3 className="text-text-main text-lg font-bold tracking-tight">Daily Focus</h3>
+            <div className="size-10 rounded-xl bg-blue-100/60 flex items-center justify-center">
+              <span className="material-symbols-outlined text-blue-600 text-xl">check_circle</span>
+            </div>
+            <div>
+              <h3 className="text-text-main text-2xl font-bold tracking-tight mb-1">Daily Focus</h3>
+              <p className="text-sm text-text-tertiary">Tasks and priorities for today</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
             <button
               onClick={() => onNavigate(View.TASKS_OVERVIEW)}
               className="text-primary text-sm font-medium hover:opacity-80 transition-opacity flex items-center gap-1"
@@ -368,7 +384,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
               See All Tasks
               <span className="material-symbols-outlined text-sm">chevron_right</span>
             </button>
-          </div>
           {tasks.filter(t => t.completed).length > 0 && (
             <button
               onClick={() => {
@@ -383,6 +398,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
               Clear Completed
             </button>
           )}
+          </div>
         </div>
         <div className="bg-white rounded-3xl shadow-soft overflow-hidden min-h-[100px]">
           {filteredTasks.length === 0 ? (
@@ -441,16 +457,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
       </section>
 
       {/* Habit Streaks */}
-      <section className="w-full mt-8">
-        <div className="flex items-center justify-between px-6 md:px-12 lg:px-8 mb-4">
-          <h3 className="text-text-main text-lg font-bold tracking-tight">Habit Streaks</h3>
-          <button
-            onClick={() => onNavigate(View.HABITS)}
-            className="text-primary text-sm font-medium hover:opacity-80 transition-opacity flex items-center gap-1"
-          >
-            See All Habits
-            <span className="material-symbols-outlined text-sm">chevron_right</span>
-          </button>
+      <section className="w-full mt-16">
+        <div className="px-6 md:px-12 lg:px-8 mb-8">
+          <div className="flex items-center justify-between pb-4 border-b border-gray-200/50">
+            <div className="flex items-center gap-3">
+              <div className="size-10 rounded-xl bg-orange-100/60 flex items-center justify-center">
+                <span className="material-symbols-outlined text-orange-600 text-xl">local_fire_department</span>
+              </div>
+              <div>
+                <h3 className="text-text-main text-2xl font-bold tracking-tight mb-1">Habit Streaks</h3>
+                <p className="text-sm text-text-tertiary">Build consistency with daily habits</p>
+              </div>
+            </div>
+            <button
+              onClick={() => onNavigate(View.HABITS)}
+              className="text-primary text-sm font-medium hover:opacity-80 transition-opacity flex items-center gap-1"
+            >
+              See All Habits
+              <span className="material-symbols-outlined text-sm">chevron_right</span>
+            </button>
+          </div>
         </div>
         <div className="flex overflow-x-auto lg:grid lg:grid-cols-4 xl:grid-cols-5 lg:overflow-x-visible no-scrollbar px-6 md:px-12 lg:px-8 pb-6 gap-4 snap-x lg:snap-none">
             <button 
@@ -486,10 +512,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
       </section>
 
       {/* Life Areas */}
-      <section className="w-full mt-8 px-6 md:px-12 lg:px-8">
-        <div className="w-full">
-          <div className="flex items-baseline justify-between mb-4">
-            <h3 className="text-text-main text-lg font-bold tracking-tight">Life Areas</h3>
+      <section className="w-full mt-16 px-6 md:px-12 lg:px-8">
+        <div className="w-full bg-gradient-to-br from-white via-purple-50/40 to-purple-50/30 rounded-3xl p-8 lg:p-10 border-2 border-purple-200/60 shadow-lg">
+          <div className="flex items-baseline justify-between mb-8 pb-4 border-b border-purple-200/50">
+            <div className="flex items-center gap-3">
+              <div className="size-10 rounded-xl bg-purple-100/60 flex items-center justify-center">
+                <span className="material-symbols-outlined text-purple-600 text-xl">category</span>
+              </div>
+              <div>
+                <h3 className="text-text-main text-2xl font-bold tracking-tight mb-1">Life Areas</h3>
+                <p className="text-sm text-text-tertiary">Organize your goals by life domain</p>
+              </div>
+            </div>
             <button 
               className="text-primary text-sm font-medium hover:opacity-80 transition-opacity flex items-center gap-1"
               onClick={() => onNavigate(View.LIFE_AREAS)}

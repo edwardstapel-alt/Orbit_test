@@ -21,6 +21,15 @@ import { Task, Habit, Objective, KeyResult, LifeArea, TimeSlot, Friend, UserProf
 // Helper to get current user ID
 const getUserId = (): string | null => {
   const user = auth.currentUser;
+  if (user) {
+    console.log('🔐 getUserId called:', {
+      uid: user.uid,
+      email: user.email,
+      timestamp: new Date().toISOString()
+    });
+  } else {
+    console.warn('⚠️ getUserId called but user is not authenticated');
+  }
   return user ? user.uid : null;
 };
 
@@ -45,20 +54,40 @@ export const syncEntityToFirebase = async (
   try {
     const userId = getUserId();
     if (!userId) {
+      console.warn(`⚠️ Cannot sync ${collectionName} to Firebase: user not authenticated`);
       return { success: false, error: 'User not authenticated' };
     }
 
     const docRef = doc(db, getUserCollection(collectionName), entityId);
-    await setDoc(docRef, {
+    const dataToSync = {
       ...entity,
       updatedAt: serverTimestamp(),
       syncedAt: serverTimestamp(),
       userId // Store userId for security
-    }, { merge: true });
-
+    };
+    
+    // Ensure createdAt is set if not present
+    if (!dataToSync.createdAt) {
+      dataToSync.createdAt = new Date().toISOString();
+    }
+    
+    console.log(`📤 Syncing ${collectionName} to Firebase:`, {
+      id: entityId,
+      collection: getUserCollection(collectionName),
+      hasCreatedAt: !!dataToSync.createdAt,
+      title: collectionName === 'tasks' ? entity.title : 'N/A'
+    });
+    
+    await setDoc(docRef, dataToSync, { merge: true });
+    
+    console.log(`✅ Successfully synced ${collectionName} to Firebase:`, entityId);
     return { success: true };
   } catch (error: any) {
-    console.error(`Error syncing ${collectionName} to Firebase:`, error);
+    console.error(`❌ Error syncing ${collectionName} to Firebase:`, {
+      id: entityId,
+      error: error.message,
+      stack: error.stack
+    });
     return { success: false, error: error.message };
   }
 };
@@ -159,12 +188,19 @@ export const watchFirebaseChanges = (
 
   try {
     const collectionRef = collection(db, getUserCollection(collectionName));
+    console.log(`👂 Setting up Firebase listener for ${collectionName}, collection path: ${getUserCollection(collectionName)}`);
     const unsubscribe = onSnapshot(collectionRef, (snapshot) => {
+      console.log(`📡 Firebase snapshot received for ${collectionName}:`, {
+        docCount: snapshot.docs.length,
+        hasPendingWrites: snapshot.metadata.hasPendingWrites,
+        fromCache: snapshot.metadata.fromCache
+      });
       const data = snapshot.docs
         .map(doc => {
           const docData = doc.data();
           // Skip deleted items
           if (docData.deleted === true) {
+            console.log(`⏭️ Skipping deleted ${collectionName}:`, doc.id);
             return null;
           }
           // Convert Firestore Timestamps to ISO strings
@@ -181,9 +217,13 @@ export const watchFirebaseChanges = (
           return processed;
         })
         .filter(item => item !== null); // Remove null items (deleted)
+      console.log(`📦 Processed ${collectionName} data:`, {
+        count: data.length,
+        ids: collectionName === 'tasks' ? data.map((d: any) => d.id) : 'N/A'
+      });
       callback(data);
     }, (error) => {
-      console.error(`Error watching ${collectionName}:`, error);
+      console.error(`❌ Error watching ${collectionName}:`, error);
     });
 
     return unsubscribe;

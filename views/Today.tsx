@@ -156,6 +156,16 @@ export const Today: React.FC<TodayProps> = ({ onEdit, onNavigate, onMenuClick, o
     }
   };
 
+  // Select all tasks in a day part
+  const selectAllTasksInDayPart = (dayPartId: string) => {
+    const partTasks = tasksByDayPart[dayPartId] || [];
+    partTasks.forEach(task => {
+      if (!task.completed) {
+        updateTask({ ...task, completed: true });
+      }
+    });
+  };
+
   // Check if selected date is in the future
   const isFutureDate = (date: Date) => {
     const today = new Date();
@@ -512,6 +522,9 @@ export const Today: React.FC<TodayProps> = ({ onEdit, onNavigate, onMenuClick, o
             return null;
           }
 
+          const hasSelectedTasks = partTasks.some(t => t.completed);
+          const allTasksSelected = partTasks.length > 0 && partTasks.every(t => t.completed);
+
           return (
             <section key={dayPart.id} className="mb-6 lg:mb-0">
               <div className="flex items-center justify-between mb-4">
@@ -523,12 +536,26 @@ export const Today: React.FC<TodayProps> = ({ onEdit, onNavigate, onMenuClick, o
                     </p>
                   )}
                 </div>
-                <button
-                  onClick={() => setActiveModal({ type: 'addTask', dayPartId: dayPart.id })}
-                  className="p-2 rounded-xl hover:bg-gray-100 transition-colors"
-                >
-                  <span className="material-symbols-outlined text-text-tertiary text-lg">add</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  {hasSelectedTasks && partTasks.length > 1 && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        selectAllTasksInDayPart(dayPart.id);
+                      }}
+                      className="px-3 py-1.5 bg-primary/10 text-primary text-xs font-semibold rounded-lg hover:bg-primary/20 transition-colors flex items-center gap-1.5"
+                    >
+                      <span className="material-symbols-outlined text-sm">select_all</span>
+                      {allTasksSelected ? 'All Selected' : 'Select All'}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setActiveModal({ type: 'addTask', dayPartId: dayPart.id })}
+                    className="p-2 rounded-xl hover:bg-gray-100 transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-text-tertiary text-lg">add</span>
+                  </button>
+                </div>
               </div>
 
               {partTasks.length === 0 ? (
