@@ -139,6 +139,12 @@
         'opsz' 24
       }
 
+      /* Android Safe Area Insets - Prevent content from going under notch */
+      [style*="position: sticky"][style*="top: 0"],
+      .sticky.top-0 {
+        padding-top: env(safe-area-inset-top, 30px) !important;
+      }
+      
       /* Range Slider Styling */
       input[type=range] {
         -webkit-appearance: none; 

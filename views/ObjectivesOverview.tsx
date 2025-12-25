@@ -245,14 +245,14 @@ export const ObjectivesOverview: React.FC<ObjectivesOverviewProps> = ({ onViewOb
 
                     {linkedKRs.length > 0 && (
                         <div className="mt-4 pt-4 border-t border-gray-50 space-y-3">
-                            {linkedKRs.slice(0, 2).map(kr => {
+                            {linkedKRs.map(kr => {
                                 const krProgress = Math.min(Math.round((kr.current / kr.target) * 100), 100);
                                 return (
                                     <div key={kr.id} className="flex items-center gap-3">
                                         <div className="flex-1">
                                             <div className="flex justify-between mb-1">
-                                                <span className="text-xs font-medium text-text-secondary truncate">{kr.title}</span>
-                                                <span className="text-xs font-bold text-text-main">{krProgress}%</span>
+                                                <span className="text-xs font-medium text-text-secondary break-words">{kr.title}</span>
+                                                <span className="text-xs font-bold text-text-main ml-2 shrink-0">{krProgress}%</span>
                                             </div>
                                             <div className="h-1.5 w-full bg-gray-50 rounded-full overflow-hidden">
                                                 <div className="h-full bg-gray-300 rounded-full" style={{width: `${krProgress}%`}}></div>
@@ -261,9 +261,6 @@ export const ObjectivesOverview: React.FC<ObjectivesOverviewProps> = ({ onViewOb
                                     </div>
                                 )
                             })}
-                            {linkedKRs.length > 2 && (
-                                <p className="text-[10px] text-text-tertiary text-center font-medium">+ {linkedKRs.length - 2} more key results</p>
-                            )}
                         </div>
                     )}
                 </div>

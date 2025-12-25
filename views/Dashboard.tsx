@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View } from '../types';
 import { useData } from '../context/DataContext';
 import { TopNav } from '../components/TopNav';
-import { QuickActionsPanel } from '../components/QuickActionsPanel';
 import { KeyResultStatusView } from './KeyResultStatusView';
 import { SwipeableTask } from '../components/SwipeableTask';
 
@@ -135,7 +134,7 @@ const ObjectiveCard: React.FC<{
 
 export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onViewObjective, onViewLifeArea, onMenuClick, onProfileClick }) => {
   const [mode, setMode] = useState<'personal' | 'professional'>('professional');
-  const { tasks, habits, objectives, keyResults, lifeAreas, updateTask, deleteTask, archiveTask, deleteCompletedTasks, userProfile, showCategory, quickActions, reviews, getLatestReview } = useData();
+  const { tasks, habits, objectives, keyResults, lifeAreas, updateTask, deleteTask, archiveTask, deleteCompletedTasks, userProfile, showCategory, reviews, getLatestReview } = useData();
   const [removingTasks, setRemovingTasks] = useState<Set<string>>(new Set());
   const [showAddObjectiveModal, setShowAddObjectiveModal] = useState(false);
   const [selectedKeyResultId, setSelectedKeyResultId] = useState<string | null>(null);
@@ -283,25 +282,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
         );
       })()}
 
-      {/* Quick Actions Panel */}
-      {quickActions.length > 0 && (
-        <section className="px-6 md:px-12 lg:px-8 mt-4">
-          <div className="w-full">
-            <QuickActionsPanel
-              customActions={quickActions}
-              onActionClick={(action) => {
-                if (action.type === 'navigation' && action.targetView) {
-                  onNavigate(action.targetView);
-                } else if (action.type === 'template' && action.templateType) {
-                  onEdit(action.templateType);
-                }
-              }}
-              onNavigate={onNavigate}
-              onEdit={onEdit}
-            />
-          </div>
-        </section>
-      )}
 
       {/* Toggle - Only show if showCategory is enabled */}
       {showCategory && (

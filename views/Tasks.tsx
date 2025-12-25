@@ -351,11 +351,13 @@ export const Tasks: React.FC<TasksProps> = ({ onEdit, onNavigate, onMenuClick, o
               onLongPress: () => {
                 if (!isTaskSelectMode) {
                   enterSelectMode('task');
-                  toggleSelection('task', task.id);
                 }
+                toggleSelection('task', task.id);
               },
               onClick: () => {
-                // onClick is handled by the div's onClick handler below
+                if (isTaskSelectMode) {
+                  toggleSelection('task', task.id);
+                }
               }
             });
 
@@ -453,8 +455,8 @@ export const Tasks: React.FC<TasksProps> = ({ onEdit, onNavigate, onMenuClick, o
                 onLongPress={() => {
                   if (!isTaskSelectMode) {
                     enterSelectMode('task');
-                    toggleSelection('task', task.id);
                   }
+                  toggleSelection('task', task.id);
                 }}
               >
                 {taskContent}
