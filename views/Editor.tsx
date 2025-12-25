@@ -7,6 +7,16 @@ import { HabitScheduleSelector } from '../components/HabitScheduleSelector';
 import { getAllTemplates, createHabitFromTemplate } from '../utils/habitTemplates';
 import { getTaskTemplates, createTaskFromTemplate as createTaskFromTemplateUtil } from '../utils/taskTemplates';
 import { getObjectiveTemplates, getObjectiveTemplatesByCategory, createObjectiveFromTemplate as createObjectiveFromTemplateUtil } from '../utils/objectiveTemplates';
+import { TaskFormSection } from '../components/Editor/TaskFormSection';
+import { HabitFormSection } from '../components/Editor/HabitFormSection';
+import { FriendFormSection } from '../components/Editor/FriendFormSection';
+import { LifeAreaFormSection } from '../components/Editor/LifeAreaFormSection';
+import { VisionFormSection } from '../components/Editor/VisionFormSection';
+import { TimeSlotFormSection } from '../components/Editor/TimeSlotFormSection';
+import { ObjectiveFormSection } from '../components/Editor/ObjectiveFormSection';
+import { KeyResultFormSection } from '../components/Editor/KeyResultFormSection';
+import { handleEditorSave } from '../utils/editor/editorSaveHandler';
+import { getEditorTitle } from '../utils/editor/editorHelpers';
 
 interface EditorProps {
   type: EntityType;
@@ -319,8 +329,10 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
               if (template) {
                 const objectiveFromTemplate = createObjectiveFromTemplateUtil(template, defaultLifeAreaId);
                 setLoadedTemplateId(templateIdToLoad);
-                if (template.keyResults && template.keyResults.length > 0) {
-                  setTemplateKeyResults(template.keyResults);
+                // Check if template has keyResults (may be in different property names)
+                const templateKRs = (template as any).keyResults || (template as any).key_results || [];
+                if (templateKRs && templateKRs.length > 0) {
+                  setTemplateKeyResults(templateKRs);
                 } else {
                   setTemplateKeyResults([]);
                 }
@@ -331,20 +343,20 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                   lifeAreaId: defaultLifeAreaId || objectiveFromTemplate.lifeAreaId
                 });
               } else {
-                const today = new Date();
-                const nextYear = new Date(today.getFullYear() + 1, today.getMonth(), today.getDate());
-                setFormData({ 
-                  title: '', 
-                  description: '', 
-                  status: 'On Track', 
-                  category: 'professional', 
-                  owner: primaryOwner.name, 
-                  ownerImage: primaryOwner.image,
-                  startDate: today.toISOString().split('T')[0], 
-                  endDate: nextYear.toISOString().split('T')[0],
-                  progress: 0,
-                  lifeAreaId: defaultLifeAreaId
-                });
+          const today = new Date();
+          const nextYear = new Date(today.getFullYear() + 1, today.getMonth(), today.getDate());
+          setFormData({ 
+            title: '', 
+            description: '', 
+            status: 'On Track', 
+            category: 'professional', 
+            owner: primaryOwner.name, 
+            ownerImage: primaryOwner.image,
+            startDate: today.toISOString().split('T')[0], 
+            endDate: nextYear.toISOString().split('T')[0],
+            progress: 0,
+            lifeAreaId: defaultLifeAreaId
+          });
                 setTemplateKeyResults([]); // Reset if template not found
                 setLoadedTemplateId(null);
                 localStorage.removeItem('orbit_selectedTemplateId');
@@ -458,204 +470,20 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
   };
 
   const handleSave = () => {
-    const id = editId || Math.random().toString(36).substr(2, 9);
-    const newItem = { ...formData, id };
-
-    // Basic Validation
-    if ((type === 'task' && !newItem.title) || (type === 'habit' && !newItem.name) || (type === 'friend' && !newItem.name) || (type === 'objective' && !newItem.title) || (type === 'keyResult' && !newItem.title) || (type === 'lifeArea' && !newItem.name) || (type === 'vision' && !newItem.statement) || (type === 'timeSlot' && !newItem.title)) {
-        alert("Please fill in the required field.");
-        return;
-    }
-
-    if (type === 'task') editId ? data.updateTask(newItem as Task) : data.addTask(newItem as Task);
-    if (type === 'habit') editId ? data.updateHabit(newItem as Habit) : data.addHabit(newItem as Habit);
-    if (type === 'friend') editId ? data.updateFriend({ ...newItem, image: 'https://picsum.photos/200' } as Friend) : data.addFriend({ ...newItem, image: 'https://picsum.photos/200', lastSeen: 'Just now' } as Friend);
-    if (type === 'timeSlot') editId ? data.updateTimeSlot(newItem as TimeSlot) : data.addTimeSlot(newItem as TimeSlot);
-    
-    if (type === 'objective') {
-      // If there's only 1 team member, automatically set them as owner
-      const singleOwner = getSingleTeamMemberOwner();
-      if (singleOwner) {
-        newItem.owner = singleOwner.name;
-        newItem.ownerImage = singleOwner.image;
-      }
-      
-      // Remove undefined values to prevent Firebase errors
-      const cleanObjective = { ...newItem, ownerImage: newItem.ownerImage || 'https://picsum.photos/id/64/200/200' };
-      // Remove undefined fields (Firebase doesn't accept undefined)
-      Object.keys(cleanObjective).forEach(key => {
-        if (cleanObjective[key] === undefined) {
-          delete cleanObjective[key];
-        }
-      });
-      editId ? data.updateObjective(cleanObjective as Objective) : data.addObjective(cleanObjective as Objective);
-      
-      // If creating from template, add key results and tasks
-      if (!editId && loadedTemplateId) {
-        const allTemplates = getObjectiveTemplates(data.objectiveTemplates);
-        const template = allTemplates.find(t => t.id === loadedTemplateId);
-        const newObjectiveId = newItem.id;
-        
-        // Create key results from templateKeyResults state (user may have edited them)
-        if (templateKeyResults && templateKeyResults.length > 0) {
-          templateKeyResults.forEach((krTemplate, index) => {
-            if (!krTemplate.title || krTemplate.title.trim() === '') {
-              return;
-            }
-            // If there's only 1 team member, automatically set them as owner
-            const singleOwner = getSingleTeamMemberOwner();
-            const keyResultOwner = singleOwner 
-              ? singleOwner.name 
-              : (krTemplate.owner || newItem.owner || '');
-            const keyResultOwnerImage = singleOwner 
-              ? singleOwner.image 
-              : (krTemplate.ownerImage || newItem.ownerImage || 'https://picsum.photos/id/64/200/200');
-            
-            const keyResult: KeyResult = {
-              id: `${newObjectiveId}-kr-${index}`,
-              title: krTemplate.title || `Key Result ${index + 1}`,
-              objectiveId: newObjectiveId,
-              current: krTemplate.current || 0,
-              target: krTemplate.target || 100,
-              measurementType: krTemplate.measurementType || 'percentage',
-              currency: krTemplate.currency || 'EUR',
-              decimals: krTemplate.decimals !== undefined ? krTemplate.decimals : (krTemplate.measurementType === 'currency' ? 2 : 0),
-              status: krTemplate.status || 'On Track',
-              startDate: krTemplate.startDate || newItem.startDate,
-              endDate: krTemplate.endDate || newItem.endDate,
-              owner: keyResultOwner,
-              ownerImage: keyResultOwnerImage,
-              // Only include customUnit if it has a value (Firebase doesn't accept undefined)
-              ...(krTemplate.customUnit ? { customUnit: krTemplate.customUnit } : {}),
-            };
-            data.addKeyResult(keyResult);
-          });
-        }
-        
-        // Create action plan tasks
-        if (template?.actionPlan?.weeks) {
-          template.actionPlan.weeks.forEach(week => {
-            week.tasks.forEach(task => {
-              const taskObj = {
-                id: `${newObjectiveId}-task-${task.id}`,
-                title: task.title,
-                tag: template.category,
-                completed: false,
-                priority: false,
-                scheduledDate: task.scheduledDate,
-                objectiveId: newObjectiveId,
-                lifeAreaId: newItem.lifeAreaId || '',
-              };
-              data.addTask(taskObj);
-            });
-          });
-        }
-        
-        setLoadedTemplateId(null);
-        setTemplateKeyResults([]); // Reset template key results after saving
-        localStorage.removeItem('orbit_selectedTemplateId'); // Clean up template ID after saving
-        
-        if (onNavigate) {
-          onClose();
-          setTimeout(() => {
-            onNavigate(View.OBJECTIVE_DETAIL, newObjectiveId);
-          }, 100);
-          return;
-        }
-      } else if (!editId && onNavigate) {
-        // If creating a new Objective (not from template), navigate to detail view where user can add key results
-        const newObjectiveId = newItem.id;
-        onClose();
-        setTimeout(() => {
-          onNavigate(View.OBJECTIVE_DETAIL, newObjectiveId);
-        }, 100);
-        return;
-      }
-    }
-    
-    if (type === 'keyResult') {
-      const krItem = newItem as KeyResult;
-      
-      // Check: Een key result kan niet aan meerdere goals hangen
-      if (editId) {
-        const existingKR = data.keyResults.find(kr => kr.id === editId);
-        if (existingKR && existingKR.objectiveId) {
-          // Als de key result al een objectiveId heeft, mag deze niet veranderen
-          // Gebruik altijd de bestaande objectiveId
-          krItem.objectiveId = existingKR.objectiveId;
-          
-          // Als er een parentId is meegegeven die anders is, waarschuw de gebruiker
-          if (parentId && parentId !== existingKR.objectiveId) {
-            alert('Een Key Result kan niet aan meerdere Goals gekoppeld worden. Deze Key Result is al gekoppeld aan een ander Goal.');
-            return;
-          }
-        } else if (parentId) {
-          // Als er geen bestaande objectiveId is, gebruik de parentId
-          krItem.objectiveId = parentId;
-        }
-      } else {
-        // Bij nieuwe key result, gebruik parentId
-        if (parentId) {
-          krItem.objectiveId = parentId;
-        }
-      }
-      
-      // If there's only 1 team member, automatically set them as owner
-      const singleOwner = getSingleTeamMemberOwner();
-      if (singleOwner) {
-        krItem.owner = singleOwner.name;
-        krItem.ownerImage = singleOwner.image;
-      } else {
-        // Als er geen owner is ingesteld, gebruik de owner van de parent objective
-        if (!krItem.owner && krItem.objectiveId) {
-          const parentObj = data.objectives.find(o => o.id === krItem.objectiveId);
-          if (parentObj) {
-            krItem.owner = parentObj.owner;
-            krItem.ownerImage = parentObj.ownerImage;
-          }
-        }
-      }
-      editId ? data.updateKeyResult(krItem) : data.addKeyResult(krItem);
-    }
-    if (type === 'place') editId ? alert("Places cannot be edited yet") : data.addPlace(newItem as Place);
-    if (type === 'lifeArea') {
-      const now = new Date().toISOString();
-      const lifeAreaData: LifeArea = {
-        ...newItem,
-        createdAt: editId ? (data.lifeAreas.find(la => la.id === editId)?.createdAt || now) : now,
-        updatedAt: now
-      };
-      editId ? data.updateLifeArea(lifeAreaData) : data.addLifeArea(lifeAreaData);
-      
-      // If creating a new Life Area, navigate to detail view where user can add goals/key results
-      if (!editId && onNavigate) {
-        const newLifeAreaId = lifeAreaData.id;
-        onClose();
-        setTimeout(() => {
-          onNavigate(View.LIFE_AREA_DETAIL, undefined, newLifeAreaId);
-        }, 100);
-        return;
-      }
-    }
-    if (type === 'vision') {
-      const now = new Date().toISOString();
-      const visionData: Vision = {
-        ...newItem,
-        images: newItem.images || [],
-        createdAt: editId ? (data.visions.find(v => v.id === editId)?.createdAt || now) : now,
-        updatedAt: now
-      };
-      // Check if vision already exists for this life area
-      const existingVision = data.visions.find(v => v.lifeAreaId === visionData.lifeAreaId);
-      if (existingVision && !editId) {
-        // Update existing vision instead of creating new one
-        data.updateVision({ ...visionData, id: existingVision.id });
-      } else {
-        editId ? data.updateVision(visionData) : data.addVision(visionData);
-      }
-    }
-
-    onClose();
+    handleEditorSave({
+      type,
+      formData,
+      editId,
+      parentId,
+      loadedTemplateId,
+      templateKeyResults,
+      data,
+      getSingleTeamMemberOwner,
+      onClose,
+      onNavigate,
+      setLoadedTemplateId,
+      setTemplateKeyResults,
+    });
   };
 
   const handleDelete = () => {
@@ -664,8 +492,8 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
         // Get entity data before deleting for navigation
         let lifeAreaId: string | undefined;
         let objectiveId: string | undefined;
-        
-        if (type === 'objective') {
+    
+    if (type === 'objective') {
           const objective = data.objectives.find(o => o.id === editId);
           lifeAreaId = objective?.lifeAreaId;
           data.deleteObjective(editId);
@@ -704,7 +532,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
               setTimeout(() => {
                 onNavigate(View.LIFE_AREA_DETAIL, undefined, lifeAreaId);
               }, 100);
-            } else {
+      } else {
               setTimeout(() => {
                 onNavigate(View.DASHBOARD);
               }, 100);
@@ -712,9 +540,9 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
           } else if (type === 'keyResult') {
             // Navigate back to Objective Detail if available, otherwise to Dashboard
             if (objectiveId) {
-              setTimeout(() => {
+        setTimeout(() => {
                 onNavigate(View.OBJECTIVE_DETAIL, objectiveId);
-              }, 100);
+        }, 100);
             } else if (lifeAreaId) {
               setTimeout(() => {
                 onNavigate(View.LIFE_AREA_DETAIL, undefined, lifeAreaId);
@@ -724,7 +552,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
                 onNavigate(View.DASHBOARD);
               }, 100);
             }
-          } else {
+      } else {
             // For other types, just navigate to Dashboard
             setTimeout(() => {
               onNavigate(View.DASHBOARD);
@@ -734,20 +562,7 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
     }
   };
 
-  const renderTitle = () => {
-      switch(type) {
-          case 'task': return editId ? 'Edit Focus Point' : 'New Focus Point';
-          case 'habit': return editId ? 'Edit Habit' : 'New Habit';
-          case 'friend': return editId ? 'Edit Connection' : 'New Connection';
-          case 'objective': return editId ? 'Edit Objective' : 'New Objective';
-          case 'keyResult': return editId ? 'Edit Key Result' : 'New Key Result';
-          case 'place': return 'Add Place';
-          case 'lifeArea': return editId ? 'Edit Life Area' : 'New Life Area';
-          case 'vision': return editId ? 'Edit Vision' : 'Define Vision';
-          case 'timeSlot': return editId ? 'Edit Time Block' : 'New Time Block';
-          default: return 'Edit';
-      }
-  };
+  const renderTitle = () => getEditorTitle(type, editId);
 
   const isOKR = type === 'objective' || type === 'keyResult';
 
@@ -759,1266 +574,91 @@ export const Editor: React.FC<EditorProps> = ({ type, editId, parentId, contextO
         <button onClick={handleSave} className="text-white bg-primary hover:bg-primary-soft px-5 py-2 rounded-full font-bold shadow-glow transition-all active:scale-95">Save</button>
       </header>
       
-      <div className="flex-1 overflow-y-auto bg-gray-50/50 pb-32">
+      <div className="flex-1 overflow-y-auto bg-gray-50/50 pb-32 lg:pb-8">
         <div className="max-w-4xl mx-auto p-6 md:p-8 space-y-6">
         
         {/* TASK FORM */}
         {type === 'task' && (
-            <div className="space-y-6">
-                {/* VERPLICHT: Title */}
-                <div className="bg-white p-2 rounded-2xl shadow-sm border border-slate-100">
-                    <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-1 px-1">Task Title <span className="text-red-500">*</span></label>
-                    <input type="text" className="w-full p-4 rounded-xl text-xl font-bold bg-transparent outline-none placeholder:text-gray-300" 
-                        value={formData.title || ''} onChange={(e) => handleChange('title', e.target.value)} placeholder="What needs focus?" autoFocus required />
-                </div>
-                
-                {/* VERPLICHT: Category */}
-                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                    <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Category <span className="text-red-500">*</span></label>
-                    <select className="w-full bg-transparent font-medium outline-none text-text-main" 
-                        value={formData.tag || 'Work'} onChange={(e) => handleChange('tag', e.target.value)} required>
-                        <option value="Work">Work</option>
-                        <option value="Personal">Personal</option>
-                        <option value="Health">Health</option>
-                        <option value="Family">Family</option>
-                        <option value="Finance">Finance</option>
-                        <option value="Strategy">Strategy</option>
-                    </select>
-                </div>
-
-                {/* OPTIONEEL: Priority */}
-                <div className="flex items-center justify-between bg-white p-5 rounded-2xl border border-slate-100 shadow-sm cursor-pointer" onClick={() => handleChange('priority', !formData.priority)}>
-                    <div className="flex items-center gap-3">
-                         <div className={`size-8 rounded-full flex items-center justify-center ${formData.priority ? 'bg-red-100 text-red-500' : 'bg-gray-100 text-gray-400'}`}>
-                            <span className="material-symbols-outlined text-[20px]">priority_high</span>
-                         </div>
-                         <span className="font-semibold text-text-main">High Priority</span>
-                    </div>
-                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${formData.priority ? 'border-primary bg-primary' : 'border-gray-300'}`}>
-                         {formData.priority && <span className="material-symbols-outlined text-white text-[16px] font-bold">check</span>}
-                    </div>
-                </div>
-
-                {/* OPTIONEEL: Time Management */}
-                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                    <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-3">Schedule (Optional)</label>
-                    
-                    <div className="space-y-4">
-                        <div>
-                            <label className="block text-xs font-medium text-text-secondary mb-2">Date</label>
-                            <input 
-                                type="date" 
-                                className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main" 
-                                value={formData.scheduledDate || ''} 
-                                onChange={(e) => handleChange('scheduledDate', e.target.value)} 
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-xs font-medium text-text-secondary mb-2">Time</label>
-                            <input 
-                                type="time" 
-                                step="900"
-                                className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main" 
-                                value={formData.scheduledTime || ''} 
-                                onChange={(e) => {
-                                  const newTime = e.target.value;
-                                  handleChange('scheduledTime', newTime);
-                                  // Auto-update dayPart based on time
-                                  const autoDayPart = getDayPartFromTime(newTime, data.dayParts);
-                                  handleChange('dayPart', autoDayPart);
-                                }} 
-                            />
-                            {formData.dayPart && (
-                              <p className="text-xs text-text-tertiary mt-1">
-                                Automatically set to: <span className="font-medium">{formData.dayPart}</span>
-                              </p>
-                            )}
-                        </div>
-
-                        {data.timeSlots.length > 0 && (
-                            <div>
-                                <label className="block text-xs font-medium text-text-secondary mb-2">Link to Time Block</label>
-                                <select 
-                                    className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main" 
-                                    value={formData.timeSlotId || ''} 
-                                    onChange={(e) => handleChange('timeSlotId', e.target.value)}
-                                >
-                                    <option value="">No Time Block</option>
-                                    {data.timeSlots.map(slot => (
-                                        <option key={slot.id} value={slot.id}>
-                                            {slot.title} ({slot.date} {slot.startTime}-{slot.endTime})
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* OPTIONEEL: Quick Link Selector - Link to Goals */}
-                {(data.keyResults.length > 0 || data.objectives.length > 0 || data.lifeAreas.length > 0) && (
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                        <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-3">Link to Goals (Optional)</label>
-                        <QuickLinkSelector
-                            entityType="task"
-                            currentLinks={{
-                                objectiveId: formData.objectiveId,
-                                keyResultId: formData.keyResultId,
-                                lifeAreaId: formData.lifeAreaId
-                            }}
-                            onLinkChange={(links) => {
-                                if (links.objectiveId !== formData.objectiveId) {
-                                    handleChange('objectiveId', links.objectiveId || '');
-                                }
-                                if (links.keyResultId !== formData.keyResultId) {
-                                    handleChange('keyResultId', links.keyResultId || '');
-                                }
-                                if (links.lifeAreaId !== formData.lifeAreaId) {
-                                    handleChange('lifeAreaId', links.lifeAreaId || '');
-                                }
-                            }}
-                            onCreateNew={(type, context) => {
-                                if (onEdit) {
-                                    onEdit(type, undefined, undefined, context);
-                                }
-                            }}
-                            entityTitle={formData.title}
-                            entityDescription={formData.description}
-                            entityDate={formData.dueDate}
-                            contextLifeAreaId={contextLifeAreaId}
+          <TaskFormSection
+            formData={formData}
+            onFieldChange={handleChange}
+            data={{
+              keyResults: data.keyResults,
+              objectives: data.objectives,
+              lifeAreas: data.lifeAreas,
+              friends: data.friends,
+              timeSlots: data.timeSlots,
+              dayParts: data.dayParts,
+            }}
                             contextObjectiveId={contextObjectiveId}
-                            showSuggestions={true}
+            contextLifeAreaId={contextLifeAreaId}
+            onEdit={onEdit}
                         />
-                    </div>
-                )}
-
-                {/* OPTIONEEL: Friend/Person Link */}
-                {data.friends.length > 0 && (
-                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                        <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Link to Person (Optional)</label>
-                        <div className="flex items-center gap-3">
-                            {formData.friendId && (() => {
-                                const selectedFriend = data.friends.find(f => f.id === formData.friendId);
-                                return selectedFriend ? (
-                                    <div 
-                                        className="size-10 rounded-full bg-cover bg-center border-2 border-white shadow-sm flex-shrink-0"
-                                        style={{
-                                            backgroundImage: selectedFriend.image ? `url("${selectedFriend.image}")` : 'none',
-                                            backgroundColor: selectedFriend.image ? 'transparent' : '#E5E7EB'
-                                        }}
-                                    >
-                                        {!selectedFriend.image && (
-                                            <div className="w-full h-full flex items-center justify-center text-text-tertiary">
-                                                <span className="material-symbols-outlined text-xl">person</span>
-                                            </div>
-                                        )}
-                                    </div>
-                                ) : null;
-                            })()}
-                            <select 
-                                className="flex-1 p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main" 
-                                value={formData.friendId || ''} 
-                                onChange={(e) => handleChange('friendId', e.target.value)}
-                            >
-                                <option value="">No person linked</option>
-                                {data.friends.map(friend => (
-                                    <option key={friend.id} value={friend.id}>{friend.name}</option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-                )}
-            </div>
         )}
 
         {/* HABIT FORM */}
         {type === 'habit' && (
-            <div className="space-y-6">
-                <div className="bg-white p-6 rounded-3xl shadow-soft border border-slate-100 flex flex-col items-center gap-4">
-                    <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-1">Habit Name <span className="text-red-500">*</span></label>
-                    <div className="size-20 rounded-2xl bg-primary/10 flex items-center justify-center text-primary text-4xl mb-2">
-                        <span className="material-symbols-outlined" style={{fontSize: '40px'}}>{formData.icon || 'star'}</span>
-                    </div>
-                    <input type="text" className="w-full text-center text-2xl font-bold bg-transparent outline-none placeholder:text-gray-300 border-b border-transparent focus:border-gray-100 pb-2 transition-colors" 
-                        value={formData.name || ''} onChange={(e) => handleChange('name', e.target.value)} placeholder="Name your habit" autoFocus required />
-                </div>
-
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4">
-                    
-                    {/* Quick Link Selector for Habits */}
-                    {(data.keyResults.length > 0 || data.objectives.length > 0 || data.lifeAreas.length > 0) && (
-                      <QuickLinkSelector
-                          entityType="habit"
-                          currentLinks={{
-                              objectiveId: formData.objectiveId,
-                              keyResultId: formData.linkedKeyResultId,
-                              lifeAreaId: formData.lifeAreaId
-                          }}
-                          onLinkChange={(links) => {
-                              if (links.objectiveId !== formData.objectiveId) {
-                                  handleChange('objectiveId', links.objectiveId || '');
-                              }
-                              if (links.keyResultId !== formData.linkedKeyResultId) {
-                                  handleChange('linkedKeyResultId', links.keyResultId || '');
-                                  // If linking to a Key Result, show progress contribution field
-                                  if (links.keyResultId) {
-                                    const kr = data.keyResults.find(k => k.id === links.keyResultId);
-                                    if (kr && !formData.progressContribution) {
-                                      handleChange('progressContribution', 1);
-                                    }
-                                  }
-                              }
-                              if (links.lifeAreaId !== formData.lifeAreaId) {
-                                  handleChange('lifeAreaId', links.lifeAreaId || '');
-                              }
-                          }}
-                          onCreateNew={(type, context) => {
-                              if (onEdit) {
-                                  onEdit(type, undefined, undefined, context);
-                              }
-                          }}
-                          entityTitle={formData.name}
-                          contextLifeAreaId={contextLifeAreaId}
+          <HabitFormSection
+            formData={formData}
+            onFieldChange={handleChange}
+            data={{
+              keyResults: data.keyResults,
+              objectives: data.objectives,
+              lifeAreas: data.lifeAreas,
+              formatKeyResultValue: data.formatKeyResultValue,
+            }}
                           contextObjectiveId={contextObjectiveId}
-                          showSuggestions={true}
-                      />
-                    )}
-
-                    {/* Progress Contribution - only show if Key Result is linked */}
-                    {formData.linkedKeyResultId && (() => {
-                      const linkedKR = data.keyResults.find(kr => kr.id === formData.linkedKeyResultId);
-                      if (!linkedKR) return null;
-                      
-                      return (
-                        <div className="mt-4">
-                          <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-2">
-                            Progress Contribution per Completion
-                          </label>
-                          <div className="flex items-center gap-3">
-                            <input
-                              type="number"
-                              step={linkedKR.decimals === 0 ? 1 : linkedKR.decimals === 1 ? 0.1 : 0.01}
-                              className="flex-1 p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-primary text-text-main font-medium"
-                              value={formData.progressContribution || 1}
-                              onChange={(e) => handleChange('progressContribution', parseFloat(e.target.value) || 0)}
-                              placeholder="1"
-                              min="0"
-                            />
-                            <span className="text-sm font-medium text-text-secondary">
-                              {data.formatKeyResultValue(linkedKR, formData.progressContribution || 1)}
-                            </span>
-                    </div>
-                          <p className="text-xs text-text-tertiary mt-2">
-                            Each time you complete this habit, the Key Result "{linkedKR.title}" will increase by this amount.
-                            {linkedKR.measurementType === 'currency' && ' Example: €10 per completion'}
-                            {linkedKR.measurementType === 'number' && ' Example: 0.5 per completion'}
-                            {linkedKR.measurementType === 'percentage' && ' Example: 1% per completion'}
-                            {linkedKR.measurementType === 'weight' && ' Example: 0.1 kg per completion'}
-                            {linkedKR.measurementType === 'distance' && ' Example: 0.5 km per completion'}
-                            {linkedKR.measurementType === 'time' && ' Example: 1 hour per completion'}
-                            {linkedKR.measurementType === 'height' && ' Example: 0.01 m per completion'}
-                            {linkedKR.measurementType === 'pages' && ' Example: 5 pages per completion'}
-                            {linkedKR.measurementType === 'chapters' && ' Example: 1 chapter per completion'}
-                            {linkedKR.measurementType === 'custom' && ` Example: 1 ${linkedKR.customUnit || 'unit'} per completion`}
-                          </p>
-                        </div>
-                      );
-                    })()}
-
-                    {/* OPTIONEEL: Icon Selection */}
-                    <div>
-                        <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-2">Icon (Optional)</label>
-                        <div className="flex gap-2">
-                            <input type="text" className="flex-1 p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main" 
-                                value={formData.icon || ''} onChange={(e) => handleChange('icon', e.target.value)} placeholder="e.g. water_drop" />
-                            <a href="https://fonts.google.com/icons" target="_blank" className="px-4 py-3 bg-gray-100 text-text-secondary rounded-xl font-medium hover:bg-gray-200 transition-colors">
-                                Find
-                            </a>
-                        </div>
-                    </div>
-
-                    {/* OPTIONEEL: Schedule */}
-                    <div>
-                      <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-2">
-                        Schedule (Optional)
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => setShowScheduleSelector(true)}
-                        className={`w-full p-3 bg-gray-50 rounded-xl border-2 transition-colors text-left flex items-center justify-between ${
-                          habitSchedule ? 'border-primary bg-primary/5' : 'border-gray-200 hover:border-gray-300'
-                        }`}
-                      >
-                        <span className={habitSchedule ? 'text-primary font-medium' : 'text-text-tertiary'}>
-                          {habitSchedule 
-                            ? habitSchedule.frequency === 'daily' 
-                              ? 'Daily' 
-                              : habitSchedule.frequency === 'weekly'
-                              ? `Weekly (${habitSchedule.daysOfWeek?.length || 0} days)`
-                              : 'Monthly'
-                            : 'Select schedule (optional)'}
-                        </span>
-                        <span className="material-symbols-outlined text-text-tertiary">arrow_forward</span>
-                      </button>
-                    </div>
-
-                    {/* OPTIONEEL: Generate as Tasks (only for new habits with schedule) */}
-                    {!editId && habitSchedule && (
-                      <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl">
-                        <input
-                          type="checkbox"
-                          id="generateAsTasks"
-                          checked={generateAsTasks}
-                          onChange={(e) => setGenerateAsTasks(e.target.checked)}
-                          className="w-5 h-5 rounded border-gray-300 text-primary focus:ring-primary"
-                        />
-                        <label htmlFor="generateAsTasks" className="text-sm font-medium text-text-main cursor-pointer">
-                          Generate as tasks based on schedule
-                        </label>
-                      </div>
-                    )}
-
-                    {/* OPTIONEEL: Quick Link Selector - Link to Goals */}
-                    {(data.keyResults.length > 0 || data.objectives.length > 0 || data.lifeAreas.length > 0) && (
-                      <div>
-                        <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-2">Link to Goals (Optional)</label>
-                        <QuickLinkSelector
-                            entityType="habit"
-                            currentLinks={{
-                                objectiveId: formData.objectiveId,
-                                keyResultId: formData.linkedKeyResultId,
-                                lifeAreaId: formData.lifeAreaId
-                            }}
-                            onLinkChange={(links) => {
-                                if (links.objectiveId !== formData.objectiveId) {
-                                    handleChange('objectiveId', links.objectiveId || '');
-                                }
-                                if (links.keyResultId !== formData.linkedKeyResultId) {
-                                    handleChange('linkedKeyResultId', links.keyResultId || '');
-                                    // If linking to a Key Result, show progress contribution field
-                                    if (links.keyResultId) {
-                                      const kr = data.keyResults.find(k => k.id === links.keyResultId);
-                                      if (kr && !formData.progressContribution) {
-                                        handleChange('progressContribution', 1);
-                                      }
-                                    }
-                                }
-                                if (links.lifeAreaId !== formData.lifeAreaId) {
-                                    handleChange('lifeAreaId', links.lifeAreaId || '');
-                                }
-                            }}
-                            onCreateNew={(type, context) => {
-                                if (onEdit) {
-                                    onEdit(type, undefined, undefined, context);
-                                }
-                            }}
-                            entityTitle={formData.name}
-                            contextLifeAreaId={contextLifeAreaId}
-                            contextObjectiveId={contextObjectiveId}
-                            showSuggestions={true}
-                        />
-                      </div>
-                    )}
-
-                    {/* OPTIONEEL: Progress Contribution - only show if Key Result is linked */}
-                    {formData.linkedKeyResultId && (() => {
-                      const linkedKR = data.keyResults.find(kr => kr.id === formData.linkedKeyResultId);
-                      if (!linkedKR) return null;
-                      
-                      return (
-                        <div>
-                          <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-2">
-                            Progress Contribution per Completion
-                          </label>
-                          <div className="flex items-center gap-3">
-                            <input
-                              type="number"
-                              step={linkedKR.decimals === 0 ? 1 : linkedKR.decimals === 1 ? 0.1 : 0.01}
-                              className="flex-1 p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-primary text-text-main font-medium"
-                              value={formData.progressContribution || 1}
-                              onChange={(e) => handleChange('progressContribution', parseFloat(e.target.value) || 0)}
-                              placeholder="1"
-                              min="0"
-                            />
-                            <span className="text-sm font-medium text-text-secondary">
-                              {data.formatKeyResultValue(linkedKR, formData.progressContribution || 1)}
-                            </span>
-                          </div>
-                          <p className="text-xs text-text-tertiary mt-2">
-                            Each time you complete this habit, the Key Result "{linkedKR.title}" will increase by this amount.
-                            {linkedKR.measurementType === 'currency' && ' Example: €10 per completion'}
-                            {linkedKR.measurementType === 'number' && ' Example: 0.5 per completion'}
-                            {linkedKR.measurementType === 'percentage' && ' Example: 1% per completion'}
-                            {linkedKR.measurementType === 'weight' && ' Example: 0.1 kg per completion'}
-                            {linkedKR.measurementType === 'distance' && ' Example: 0.5 km per completion'}
-                            {linkedKR.measurementType === 'time' && ' Example: 1 hour per completion'}
-                            {linkedKR.measurementType === 'height' && ' Example: 0.01 m per completion'}
-                            {linkedKR.measurementType === 'pages' && ' Example: 5 pages per completion'}
-                            {linkedKR.measurementType === 'chapters' && ' Example: 1 chapter per completion'}
-                            {linkedKR.measurementType === 'custom' && ` Example: 1 ${linkedKR.customUnit || 'unit'} per completion`}
-                          </p>
-                        </div>
-                      );
-                    })()}
-
-                    {/* OPTIONEEL: Template Selector (only for new habits) */}
-                    {!editId && (
-                      <div>
-                        <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-2">
-                          Start from Template (Optional)
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => setShowTemplateSelector(true)}
-                          className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 hover:bg-gray-100 transition-colors text-left flex items-center justify-between"
-                        >
-                          <span className="text-text-main">Selecteer template...</span>
-                          <span className="material-symbols-outlined text-text-tertiary">arrow_forward</span>
-                        </button>
-                      </div>
-                    )}
-
-                    {/* OPTIONEEL: Additional Settings */}
-                    <div className="pt-4 border-t border-gray-100">
-                        <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-3">Additional Settings (Optional)</label>
-                        
-                        <div className="grid grid-cols-2 gap-4 mb-4">
-                          <div>
-                            <label className="block text-xs font-medium text-text-secondary mb-2">
-                              Target Frequency (per week)
-                            </label>
-                            <input
-                              type="number"
-                              min="1"
-                              max="7"
-                              className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main"
-                              value={formData.targetFrequency || 7}
-                              onChange={(e) => handleChange('targetFrequency', parseInt(e.target.value) || 7)}
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-text-secondary mb-2">
-                              Reminder Time
-                            </label>
-                            <input
-                              type="time"
-                              className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main"
-                              value={formData.reminderTime || ''}
-                              onChange={(e) => handleChange('reminderTime', e.target.value)}
-                            />
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4 mb-4">
-                          <div>
-                            <label className="block text-xs font-medium text-text-secondary mb-2">
-                              Category
-                            </label>
-                            <select
-                              className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main"
-                              value={formData.category || 'Personal'}
-                              onChange={(e) => handleChange('category', e.target.value)}
-                            >
-                              <option value="Health">Health</option>
-                              <option value="Productivity">Productivity</option>
-                              <option value="Learning">Learning</option>
-                              <option value="Personal">Personal</option>
-                              <option value="Fitness">Fitness</option>
-                              <option value="Social">Social</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-text-secondary mb-2">
-                              Color
-                            </label>
-                            <input
-                              type="color"
-                              className="w-full h-12 p-1 bg-gray-50 rounded-xl outline-none cursor-pointer"
-                              value={formData.color || '#8B5CF6'}
-                              onChange={(e) => handleChange('color', e.target.value)}
-                            />
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-medium text-text-secondary mb-2">
-                            Notes / Reflections
-                          </label>
-                          <textarea
-                            className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main min-h-[100px]"
-                            value={formData.notes || ''}
-                            onChange={(e) => handleChange('notes', e.target.value)}
-                            placeholder="Add notes or reflections..."
-                          />
-                        </div>
-                    </div>
-                </div>
-            </div>
+            contextLifeAreaId={contextLifeAreaId}
+            editId={editId}
+            habitSchedule={habitSchedule}
+            generateAsTasks={generateAsTasks}
+            onScheduleClick={() => setShowScheduleSelector(true)}
+            onTemplateClick={() => setShowTemplateSelector(true)}
+            onGenerateTasksChange={setGenerateAsTasks}
+            onEdit={onEdit}
+          />
         )}
 
-        {/* OBJECTIVE FORM (OKRs Parent) - REDESIGNED */}
+        {/* OBJECTIVE FORM */}
         {type === 'objective' && (
-            <div className="space-y-6 animate-fade-in-up">
-                
-                {/* VERPLICHT: Hero Card - Title & Description */}
-                <div className="bg-gradient-to-br from-white to-gray-50 p-6 rounded-2xl shadow-soft border border-white">
-                    <label className="block text-xs font-bold text-primary uppercase tracking-widest mb-3 flex items-center gap-2">
-                        <span className="material-symbols-outlined text-[16px]">flag</span>
-                        Objective <span className="text-red-500">*</span>
-                    </label>
-                    <textarea 
-                        className="w-full text-3xl font-bold bg-transparent outline-none placeholder:text-gray-300 resize-none leading-tight" 
-                        rows={2}
-                        value={formData.title || ''} 
-                        onChange={(e) => handleChange('title', e.target.value)} 
-                        placeholder="What do you want to achieve?" 
-                        autoFocus 
-                        required
-                    />
-                    <input 
-                        type="text" 
-                        className="w-full mt-4 text-base font-medium text-text-secondary bg-transparent outline-none placeholder:text-gray-400"
-                        value={formData.description || ''} 
-                        onChange={(e) => handleChange('description', e.target.value)} 
-                        placeholder="Add a brief description or 'why' (optional)..." 
-                    />
-                </div>
-
-                {/* Template Selector (only for new objectives) */}
-                {!editId && (
-                  <div>
-                    <label className="block text-xs font-bold text-text-tertiary uppercase tracking-wider mb-2">
-                      Start vanuit Template (optioneel)
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setShowObjectiveTemplateSelector(true)}
-                      className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 hover:bg-gray-100 transition-colors text-left flex items-center justify-between"
-                    >
-                      <span className="text-text-main">Selecteer goal template...</span>
-                      <span className="material-symbols-outlined text-text-tertiary">arrow_forward</span>
-                    </button>
-                  </div>
-                )}
-
-                {/* OPTIONEEL: Context Switcher */}
-                {data.showCategory && (
-                    <div className="bg-white p-2 rounded-2xl shadow-sm border border-slate-100">
-                        <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2 px-2">Category (Optional)</label>
-                        <div className="flex">
-                            {['professional', 'personal'].map((cat) => (
-                                <button
-                                    key={cat}
-                                    onClick={() => handleChange('category', cat)}
-                                    className={`flex-1 py-3 rounded-xl text-sm font-bold capitalize transition-all ${formData.category === cat ? 'bg-primary/10 text-primary shadow-sm' : 'text-text-tertiary hover:bg-gray-50'}`}
-                                >
-                                    {cat}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {/* OPTIONEEL: Status */}
-                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 group hover:border-primary/30 transition-colors">
-                    <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Initial Status (Optional)</label>
-                    <select className="w-full bg-transparent font-semibold outline-none text-text-main appearance-none cursor-pointer" 
-                        value={formData.status || 'On Track'} onChange={(e) => handleChange('status', e.target.value)}>
-                        <option value="On Track">🟢 On Track</option>
-                        <option value="At Risk">🟠 At Risk</option>
-                        <option value="Off Track">🔴 Off Track</option>
-                        <option value="No status">⚪ No status</option>
-                    </select>
-                    <p className="text-xs text-text-tertiary mt-2">Status will be determined by Key Result updates</p>
-                </div>
-
-                {/* Timeline Dates - VERPLICHT */}
-                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                    <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-4">Timeline Dates <span className="text-red-500">*</span></label>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Start Date <span className="text-red-500">*</span></label>
-                            <input 
-                                type="date" 
-                                required
-                                className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main" 
-                                value={formData.startDate || ''} 
-                                onChange={(e) => handleChange('startDate', e.target.value)} 
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">End Date <span className="text-red-500">*</span></label>
-                            <input 
-                                type="date" 
-                                required
-                                className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main" 
-                                value={formData.endDate || ''} 
-                                onChange={(e) => handleChange('endDate', e.target.value)} 
-                            />
-                        </div>
-                    </div>
-                    <p className="text-xs text-text-tertiary mt-3">
-                        These dates are required and used for the Goal Timeline (Gantt chart) view.
-                    </p>
-                </div>
-
-                {/* Key Results from Template */}
-                {!editId && loadedTemplateId && (
-                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                        <div className="flex items-center justify-between mb-4">
-                            <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest">Key Results</label>
-                            <span className="text-xs text-text-tertiary">{templateKeyResults.length} result{templateKeyResults.length !== 1 ? 's' : ''}</span>
-                        </div>
-                        {templateKeyResults.length > 0 ? (
-                        <div className="space-y-3">
-                            {templateKeyResults.map((kr, index) => (
-                                    <div key={kr.id || index} className="bg-gray-50 p-4 rounded-xl border border-slate-100">
-                                    <div className="flex items-start justify-between mb-2">
-                                        <input
-                                            type="text"
-                                            className="flex-1 text-sm font-semibold text-text-main bg-transparent outline-none"
-                                            value={kr.title || ''}
-                                            onChange={(e) => {
-                                                const updated = [...templateKeyResults];
-                                                updated[index] = { ...updated[index], title: e.target.value };
-                                                setTemplateKeyResults(updated);
-                                            }}
-                                            placeholder="Key Result title"
-                                        />
-                                        <button
-                                            onClick={() => {
-                                                const updated = templateKeyResults.filter((_, i) => i !== index);
-                                                setTemplateKeyResults(updated);
-                                            }}
-                                            className="text-xs text-red-500 hover:text-red-600 font-medium ml-2"
-                                        >
-                                            Remove
-                                        </button>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-3 mt-3">
-                                        <div>
-                                            <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-1">Current</label>
-                                            <input
-                                                type="number"
-                                                className="w-full p-2 bg-white rounded-lg outline-none text-sm font-medium"
-                                                value={kr.current || 0}
-                                                onChange={(e) => {
-                                                    const updated = [...templateKeyResults];
-                                                    updated[index] = { ...updated[index], current: parseFloat(e.target.value) || 0 };
-                                                    setTemplateKeyResults(updated);
-                                                }}
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-1">Target</label>
-                                            <input
-                                                type="number"
-                                                className="w-full p-2 bg-white rounded-lg outline-none text-sm font-medium"
-                                                value={kr.target || 100}
-                                                onChange={(e) => {
-                                                    const updated = [...templateKeyResults];
-                                                    updated[index] = { ...updated[index], target: parseFloat(e.target.value) || 100 };
-                                                    setTemplateKeyResults(updated);
-                                                }}
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="mt-3">
-                                        <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-1">Measurement Type</label>
-                                        <select
-                                            className="w-full p-2 bg-white rounded-lg outline-none text-sm font-medium"
-                                            value={kr.measurementType || 'percentage'}
-                                            onChange={(e) => {
-                                                const updated = [...templateKeyResults];
-                                                updated[index] = { ...updated[index], measurementType: e.target.value as any };
-                                                setTemplateKeyResults(updated);
-                                            }}
-                                        >
-                                            <option value="percentage">Percentage</option>
-                                            <option value="number">Number</option>
-                                            <option value="currency">Currency</option>
-                                            <option value="weight">Weight</option>
-                                            <option value="distance">Distance</option>
-                                            <option value="time">Time</option>
-                                            <option value="height">Height</option>
-                                            <option value="pages">Pages</option>
-                                            <option value="chapters">Chapters</option>
-                                            <option value="custom">Custom</option>
-                                        </select>
-                                    </div>
-                                    {kr.measurementType === 'custom' && (
-                                        <div className="mt-3">
-                                            <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-1">Custom Unit</label>
-                                            <input
-                                                type="text"
-                                                className="w-full p-2 bg-white rounded-lg outline-none text-sm font-medium"
-                                                value={kr.customUnit || ''}
-                                                onChange={(e) => {
-                                                    const updated = [...templateKeyResults];
-                                                    updated[index] = { ...updated[index], customUnit: e.target.value };
-                                                    setTemplateKeyResults(updated);
-                                                }}
-                                                placeholder="e.g. hours, km, etc."
-                                            />
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                        ) : (
-                            <div className="text-center py-6 text-text-tertiary text-sm">
-                                <p>No key results in template. Add them below.</p>
-                            </div>
-                        )}
-                        <button
-                            onClick={() => {
-                                setTemplateKeyResults([...templateKeyResults, {
-                                    title: '',
-                                    current: 0,
-                                    target: 100,
-                                    measurementType: 'percentage',
-                                    status: 'On Track'
-                                }]);
-                            }}
-                            className="mt-4 w-full py-2 text-sm font-semibold text-primary border-2 border-primary rounded-xl hover:bg-primary/5 transition-colors"
-                        >
-                            + Add Key Result
-                        </button>
-                    </div>
-                )}
-
-                {/* Timeline Color */}
-                {formData.startDate && formData.endDate && (
-                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                        <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-4">Timeline Color</label>
-                        
-                        {/* Predefined Colors */}
-                        <div className="grid grid-cols-4 gap-3 mb-4">
-                            {[
-                                '#D95829', '#3B82F6', '#10B981', '#8B5CF6', 
-                                '#EC4899', '#14B8A6', '#F59E0B', '#EF4444'
-                            ].map(color => {
-                                const currentColor = formData.timelineColor || (data.lifeAreas.find(la => la.id === formData.lifeAreaId)?.color || '#D95829');
-                                return (
-                                    <button
-                                        key={color}
-                                        onClick={() => handleChange('timelineColor', color)}
-                                        className={`size-12 rounded-xl border-2 transition-all flex items-center justify-center ${
-                                            currentColor === color 
-                                                ? 'border-gray-900 scale-110 shadow-lg' 
-                                                : 'border-gray-200 hover:scale-105'
-                                        }`}
-                                        style={{ backgroundColor: color }}
-                                    >
-                                        {currentColor === color && (
-                                            <span className="material-symbols-outlined text-white text-xl">check</span>
-                                        )}
-                                    </button>
-                                );
-                            })}
-                        </div>
-                        
-                        {/* Custom Color */}
-                        <div className="space-y-2">
-                            <span className="text-xs font-medium text-text-secondary">Custom Color</span>
-                        <div className="flex items-center gap-3">
-                            <input 
-                                type="color" 
-                                    className="size-12 rounded-xl cursor-pointer border-2 border-gray-200" 
-                                value={formData.timelineColor || (data.lifeAreas.find(la => la.id === formData.lifeAreaId)?.color || '#D95829')} 
-                                onChange={(e) => handleChange('timelineColor', e.target.value)} 
-                            />
-                                <input
-                                    type="text"
-                                    className="flex-1 p-2 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-primary text-sm font-mono"
-                                    value={(formData.timelineColor || (data.lifeAreas.find(la => la.id === formData.lifeAreaId)?.color || '#D95829')).toUpperCase()}
-                                    onChange={(e) => {
-                                        const value = e.target.value.replace(/[^0-9A-F]/gi, '').slice(0, 6);
-                                        if (value.length === 6) {
-                                            handleChange('timelineColor', '#' + value);
-                                        }
-                                    }}
-                                    placeholder="#D95829"
-                                />
-                            </div>
-                                <p className="text-xs text-text-tertiary">Defaults to Life Area color</p>
-                        </div>
-                    </div>
-                )}
-
-                {/* OPTIONEEL: Life Area Card */}
-                {data.lifeAreas.length > 0 && (
-                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                        <div className="flex items-center justify-between mb-2">
-                            <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider">Life Area (Optional)</label>
-                            <button
-                                type="button"
-                                onClick={() => setShowLifeAreaModal(true)}
-                                className="text-[10px] text-primary font-bold hover:underline"
-                            >
-                                Select or Create
-                            </button>
-                        </div>
-                        {formData.lifeAreaId ? (
-                            <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
-                                {(() => {
-                                    const selectedLA = data.lifeAreas.find(la => la.id === formData.lifeAreaId);
-                                    return selectedLA ? (
-                                        <>
-                                            {selectedLA.icon && (
-                                                <span 
-                                                    className="material-symbols-outlined text-lg"
-                                                    style={{ color: selectedLA.color }}
-                                                >
-                                                    {selectedLA.icon}
-                                                </span>
-                                            )}
-                                            <span className="font-medium text-text-main flex-1">{selectedLA.name}</span>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleChange('lifeAreaId', '')}
-                                                className="text-text-tertiary hover:text-text-main"
-                        >
-                                                <span className="material-symbols-outlined text-sm">close</span>
-                                            </button>
-                                        </>
-                                    ) : null;
-                                })()}
-                            </div>
-                        ) : (
-                            <button
-                                type="button"
-                                onClick={() => setShowLifeAreaModal(true)}
-                                className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-tertiary text-left hover:bg-gray-100 transition-colors"
-                            >
-                                Select Life Area...
-                            </button>
-                        )}
-                    </div>
-                )}
-
-                {/* Owner Card */}
-                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                    <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Owner</label>
-                    <button 
-                        onClick={() => setShowOwnerModal(true)}
-                        className="w-full flex items-center gap-4 p-3 rounded-xl hover:bg-gray-50 transition-colors border border-slate-100"
-                    >
-                        <div className="size-12 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden border-2 border-white shadow-sm">
-                            {formData.ownerImage ? (
-                                <img src={formData.ownerImage} alt="owner" className="w-full h-full object-cover" />
-                            ) : (
-                                <span className="material-symbols-outlined text-gray-400">person</span>
-                            )}
-                        </div>
-                        <div className="flex-1 text-left">
-                            <p className="font-bold text-lg text-text-main">{formData.owner || 'Select owner'}</p>
-                            {formData.owner && (
-                                <p className="text-xs text-text-tertiary">
-                                    {data.teamMembers.find(m => m.name === formData.owner)?.role || ''}
-                                </p>
-                            )}
-                        </div>
-                        <span className="material-symbols-outlined text-text-tertiary">chevron_right</span>
-                    </button>
-                </div>
-
-                {/* Link Existing Key Results (only when editing existing objective) */}
-                {editId && type === 'objective' && (
-                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                        <div className="flex items-center justify-between mb-3">
-                            <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider">Key Results</label>
-                            <button
-                                type="button"
-                                onClick={() => setShowLinkKeyResultModal(true)}
-                                className="text-primary text-sm font-bold hover:bg-primary/5 px-3 py-1.5 rounded-lg transition-colors"
-                            >
-                                + Add Result
-                            </button>
-                        </div>
-                        {(() => {
-                            const linkedKRs = data.keyResults.filter(kr => kr.objectiveId === editId);
-                            if (linkedKRs.length > 0) {
-                                return (
-                                    <div className="space-y-3">
-                                        {linkedKRs.map(kr => {
-                                            const percent = Math.min(Math.round((kr.current / kr.target) * 100), 100);
-                                            return (
-                                                <div 
-                                                    key={kr.id} 
-                                                    onClick={() => onEdit && onEdit('keyResult', kr.id, editId)}
-                                                    className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 group hover:shadow-md hover:border-primary/20 cursor-pointer active:scale-[0.98] transition-transform"
-                                                >
-                                                    <div className="flex justify-between items-start mb-2">
-                                                        <h4 className="text-base font-semibold text-text-main leading-snug flex-1 mr-2 group-hover:text-primary transition-colors">{kr.title}</h4>
-                                                        <span className={`shrink-0 text-[10px] font-bold uppercase px-2 py-0.5 rounded ${getStatusBadge(getEffectiveStatus(kr.status, kr.id, true))}`}>
-                                                            {getEffectiveStatus(kr.status, kr.id, true)}
-                                                        </span>
-                                                    </div>
-                                                    <div className="flex items-end justify-between mb-2">
-                                                        <span className="text-xs text-text-secondary font-medium">
-                                                            {data.formatKeyResultValue(kr, kr.current)} / <span className="text-text-tertiary">{data.formatKeyResultValue(kr, kr.target)}</span>
-                                                        </span>
-                                                        <span className="text-xs font-bold text-text-main">{percent}%</span>
-                                                    </div>
-                                                    <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
-                                                        <div className={`h-full rounded-full ${getStatusColor(getEffectiveStatus(kr.status, kr.id, true))} opacity-70`} style={{width: `${percent}%`}}></div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                );
-                            }
-                            return (
-                                <div className="p-8 text-center border-2 border-dashed border-slate-200 rounded-2xl text-text-tertiary text-sm">
-                                    No Key Results yet.
-                                </div>
-                            );
-                        })()}
-                    </div>
-                )}
-            </div>
+          <ObjectiveFormSection
+            formData={formData}
+            onFieldChange={handleChange}
+            editId={editId}
+            data={{
+              lifeAreas: data.lifeAreas,
+              teamMembers: data.teamMembers,
+              keyResults: data.keyResults,
+              showCategory: data.showCategory,
+              formatKeyResultValue: data.formatKeyResultValue,
+            }}
+            showLifeAreaModal={showLifeAreaModal}
+            setShowLifeAreaModal={setShowLifeAreaModal}
+            showOwnerModal={showOwnerModal}
+            setShowOwnerModal={setShowOwnerModal}
+            showObjectiveTemplateSelector={showObjectiveTemplateSelector}
+            setShowObjectiveTemplateSelector={setShowObjectiveTemplateSelector}
+            loadedTemplateId={loadedTemplateId}
+            templateKeyResults={templateKeyResults}
+            setTemplateKeyResults={setTemplateKeyResults}
+            getEffectiveStatus={getEffectiveStatus}
+            onEdit={onEdit}
+          />
         )}
 
-        {/* KEY RESULT FORM (OKRs Child) - REDESIGNED */}
+        {/* KEY RESULT FORM */}
         {type === 'keyResult' && (
-            <div className="space-y-6 animate-fade-in-up">
-                 
-                {/* Visual Preview */}
-                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 mb-6">
-                    <div className="flex justify-between items-start mb-2 opacity-50">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-text-tertiary">Live Preview</span>
-                    </div>
-                    <div className="pointer-events-none">
-                        <div className="flex justify-between items-start mb-2">
-                            <h4 className="text-base font-semibold text-text-main leading-snug flex-1 mr-2">{formData.title || 'Result Title'}</h4>
-                            <span className="shrink-0 text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-green-100 text-green-700">{formData.status}</span>
-                        </div>
-                        <div className="flex items-end justify-between mb-2">
-                            <span className="text-xs text-text-secondary font-medium">
-                                {(() => {
-                                    const current = formData.current || 0;
-                                    const target = formData.target || 100;
-                                    const decimals = formData.decimals !== undefined ? formData.decimals : 0;
-                                    const measurementType = formData.measurementType || 'percentage';
-                                    const currency = formData.currency || 'EUR';
-                                    
-                                    const formatValue = (val: number) => {
-                                        if (decimals === 0) return Math.round(val).toString();
-                                        return val.toFixed(decimals);
-                                    };
-                                    
-                                    let unit = '';
-                                    if (measurementType === 'percentage') {
-                                        unit = '%';
-                                    } else if (measurementType === 'currency') {
-                                        unit = currency === 'EUR' ? '€' : currency === 'USD' ? '$' : currency;
-                                    } else if (measurementType === 'weight') {
-                                        unit = 'kg';
-                                    } else if (measurementType === 'distance') {
-                                        unit = 'km';
-                                    } else if (measurementType === 'time') {
-                                        unit = 'hours';
-                                    } else if (measurementType === 'height') {
-                                        unit = 'm';
-                                    } else if (measurementType === 'pages') {
-                                        unit = 'pages';
-                                    } else if (measurementType === 'chapters') {
-                                        unit = 'chapters';
-                                    } else if (measurementType === 'custom') {
-                                        unit = formData.customUnit || '';
-                                    }
-                                    
-                                    return `${formatValue(current)}${unit ? ' ' + unit : ''} / ${formatValue(target)}${unit ? ' ' + unit : ''}`;
-                                })()}
-                            </span>
-                            <span className="text-xs font-bold text-text-main">
-                                {Math.min(Math.round(((formData.current || 0) / (formData.target || 1)) * 100), 100)}%
-                            </span>
-                        </div>
-                        <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
-                            <div className="h-full rounded-full bg-green-500" style={{width: `${Math.min(Math.round(((formData.current || 0) / (formData.target || 1)) * 100), 100)}%`}}></div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* VERPLICHT: Title */}
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                    <label className="block text-xs font-bold text-primary uppercase tracking-widest mb-3 flex items-center gap-2">
-                        <span className="material-symbols-outlined text-[16px]">target</span>
-                        Measurable Result <span className="text-red-500">*</span>
-                    </label>
-                    <input 
-                        type="text" 
-                        className="w-full text-2xl font-bold bg-transparent outline-none placeholder:text-gray-300" 
-                        value={formData.title || ''} 
-                        onChange={(e) => handleChange('title', e.target.value)} 
-                        placeholder="e.g. Increase NPS to 50" 
-                        autoFocus 
-                        required
-                    />
-                </div>
-
-                {/* VERPLICHT: Target Configuration */}
-                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                    <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-4">Target Configuration <span className="text-red-500">*</span></label>
-                    
-                    {/* Measurement Type Selection */}
-                    <div className="mb-6">
-                        <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-3">Measurement</label>
-                        <select 
-                            className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-primary text-text-main font-medium"
-                            value={formData.measurementType || 'percentage'}
-                            onChange={(e) => {
-                                const newType = e.target.value as 'percentage' | 'number' | 'currency' | 'weight' | 'distance' | 'time' | 'height' | 'pages' | 'chapters' | 'custom';
-                                handleChange('measurementType', newType);
-                                // Set defaults based on type
-                                if (newType === 'percentage') {
-                                    handleChange('target', 100);
-                                    handleChange('current', 0);
-                                    handleChange('decimals', 0);
-                                } else if (newType === 'number') {
-                                    handleChange('target', 100);
-                                    handleChange('current', 0);
-                                    handleChange('decimals', 0);
-                                } else if (newType === 'currency') {
-                                    handleChange('target', 1000);
-                                    handleChange('current', 0);
-                                    handleChange('decimals', 2);
-                                    if (!formData.currency) handleChange('currency', 'EUR');
-                                } else if (newType === 'weight') {
-                                    handleChange('target', 80);
-                                    handleChange('current', 85);
-                                    handleChange('decimals', 1);
-                                } else if (newType === 'distance') {
-                                    handleChange('target', 42.2);
-                                    handleChange('current', 0);
-                                    handleChange('decimals', 1);
-                                } else if (newType === 'time') {
-                                    handleChange('target', 10000);
-                                    handleChange('current', 0);
-                                    handleChange('decimals', 0);
-                                } else if (newType === 'height') {
-                                    handleChange('target', 180);
-                                    handleChange('current', 175);
-                                    handleChange('decimals', 0);
-                                } else if (newType === 'pages') {
-                                    handleChange('target', 500);
-                                    handleChange('current', 0);
-                                    handleChange('decimals', 0);
-                                } else if (newType === 'chapters') {
-                                    handleChange('target', 10);
-                                    handleChange('current', 0);
-                                    handleChange('decimals', 0);
-                                } else if (newType === 'custom') {
-                                    handleChange('target', 100);
-                                    handleChange('current', 0);
-                                    handleChange('decimals', 0);
-                                }
-                            }}
-                        >
-                            <option value="number">Numeric</option>
-                            <option value="percentage">Percentage</option>
-                            <option value="currency">Money</option>
-                            <option value="weight">Weight</option>
-                            <option value="distance">Distance</option>
-                            <option value="time">Time</option>
-                            <option value="height">Height</option>
-                            <option value="pages">Pages</option>
-                            <option value="chapters">Chapters</option>
-                            <option value="custom">Custom</option>
-                        </select>
-                    </div>
-
-                    {/* Currency Selection (only for currency type) */}
-                    {formData.measurementType === 'currency' && (
-                        <div className="mb-6">
-                            <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-3">Currency</label>
-                            <select 
-                                className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-primary text-text-main font-medium"
-                                value={formData.currency || 'EUR'}
-                                onChange={(e) => handleChange('currency', e.target.value)}
-                            >
-                                <option value="EUR">€ EUR</option>
-                                <option value="USD">$ USD</option>
-                                <option value="GBP">£ GBP</option>
-                                <option value="JPY">¥ JPY</option>
-                                <option value="CNY">CN¥ CNY</option>
-                                <option value="CAD">CA$ CAD</option>
-                                <option value="AUD">A$ AUD</option>
-                                <option value="MXN">MX$ MXN</option>
-                                <option value="BRL">R$ BRL</option>
-                                <option value="KRW">₩ KRW</option>
-                                <option value="NZD">NZ$ NZD</option>
-                                <option value="CHF">CHF CHF</option>
-                            </select>
-                        </div>
-                    )}
-
-                    {/* Custom Unit Input (only for custom type) */}
-                    {formData.measurementType === 'custom' && (
-                        <div className="mb-6">
-                            <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-3">Custom Unit</label>
-                            <input
-                                type="text"
-                                className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-primary text-text-main font-medium"
-                                value={formData.customUnit || ''}
-                                onChange={(e) => handleChange('customUnit', e.target.value)}
-                                placeholder="e.g., reps, sets, items"
-                            />
-                        </div>
-                    )}
-
-                    {/* Decimals Selection */}
-                    <div className="mb-6">
-                        <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-3">Decimals</label>
-                        <select 
-                            className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-primary text-text-main font-medium"
-                            value={formData.decimals !== undefined ? formData.decimals : 0}
-                            onChange={(e) => handleChange('decimals', parseInt(e.target.value))}
-                        >
-                            <option value="0">0 decimals</option>
-                            <option value="1">1 decimal</option>
-                            <option value="2">2 decimals</option>
-                        </select>
-                    </div>
-
-                    {/* VERPLICHT: Starting Value and Target Value */}
-                    <div className="space-y-4">
-                        <div>
-                            <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Current Value <span className="text-red-500">*</span></label>
-                            <div className="relative">
-                                <input 
-                                    type="number" 
-                                    step={formData.decimals === 0 ? 1 : formData.decimals === 1 ? 0.1 : 0.01}
-                                    className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-primary text-text-main font-medium pr-12"
-                                    value={formData.current || 0}
-                                    onChange={(e) => handleChange('current', parseFloat(e.target.value) || 0)}
-                                />
-                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary font-medium">
-                                    {formData.measurementType === 'percentage' ? '%' : 
-                                     formData.measurementType === 'currency' ? (formData.currency === 'EUR' ? '€' : formData.currency === 'USD' ? '$' : formData.currency || '€') : 
-                                     formData.measurementType === 'weight' ? 'kg' :
-                                     formData.measurementType === 'distance' ? 'km' :
-                                     formData.measurementType === 'time' ? 'hours' :
-                                     formData.measurementType === 'height' ? 'm' :
-                                     formData.measurementType === 'pages' ? 'pages' :
-                                     formData.measurementType === 'chapters' ? 'chapters' :
-                                     formData.measurementType === 'custom' ? (formData.customUnit || '') : 
-                                     ''}
-                                </span>
-                            </div>
-                        </div>
-                        <div>
-                            <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Target value <span className="text-red-500">*</span></label>
-                            <div className="relative">
-                                <input 
-                                    type="number" 
-                                    step={formData.decimals === 0 ? 1 : formData.decimals === 1 ? 0.1 : 0.01}
-                                    className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-primary text-text-main font-medium pr-12"
-                                    value={formData.target || (formData.measurementType === 'percentage' ? 100 : formData.measurementType === 'currency' ? 1000 : 100)}
-                                    onChange={(e) => handleChange('target', parseFloat(e.target.value) || 0)}
-                                />
-                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary font-medium">
-                                    {formData.measurementType === 'percentage' ? '%' : 
-                                     formData.measurementType === 'currency' ? (formData.currency === 'EUR' ? '€' : formData.currency === 'USD' ? '$' : formData.currency || '€') : 
-                                     formData.measurementType === 'weight' ? 'kg' :
-                                     formData.measurementType === 'distance' ? 'km' :
-                                     formData.measurementType === 'time' ? 'hours' :
-                                     formData.measurementType === 'height' ? 'm' :
-                                     formData.measurementType === 'pages' ? 'pages' :
-                                     formData.measurementType === 'chapters' ? 'chapters' :
-                                     formData.measurementType === 'custom' ? (formData.customUnit || '') : 
-                                     ''}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* OPTIONEEL: Initial Status */}
-                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                     <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Initial Status (Optional)</label>
-                     <p className="text-xs text-text-tertiary mb-3">Status will be determined by status updates</p>
-                     <div className="flex gap-2">
-                        {['On Track', 'At Risk', 'Off Track'].map(s => (
-                             <button 
-                                key={s} 
-                                onClick={() => handleChange('status', s)}
-                                className={`flex-1 py-2 rounded-lg text-xs font-bold border transition-colors ${formData.status === s ? 'bg-primary text-white border-primary' : 'bg-gray-50 text-text-secondary border-transparent'}`}
-                             >
-                                 {s}
-                             </button>
-                        ))}
-                     </div>
-                </div>
-
-                {/* VERPLICHT: Timeline Dates */}
-                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                    <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-4">Timeline Dates <span className="text-red-500">*</span> <span className="text-xs font-normal text-text-tertiary normal-case">(Required for Goal Timeline view)</span></label>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Start Date <span className="text-red-500">*</span></label>
-                            <input 
-                                type="date" 
-                                required
-                                className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main" 
-                                value={formData.startDate || ''} 
-                                onChange={(e) => handleChange('startDate', e.target.value)} 
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">End Date <span className="text-red-500">*</span></label>
-                            <input 
-                                type="date" 
-                                required
-                                className="w-full p-3 bg-gray-50 rounded-xl outline-none font-medium text-text-main" 
-                                value={formData.endDate || ''} 
-                                onChange={(e) => handleChange('endDate', e.target.value)} 
-                            />
-                        </div>
-                    </div>
-                    <p className="text-xs text-text-tertiary mt-3">
-                        These dates are required and used for the Goal Timeline (Gantt chart) view.
-                    </p>
-                </div>
-
-                {/* OPTIONEEL: Owner Card */}
-                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                    <label className="block text-[10px] font-bold text-text-tertiary uppercase tracking-wider mb-2">Owner (Optional)</label>
-                    <p className="text-xs text-text-tertiary mb-2">Defaults to parent Objective owner if not set</p>
-                    <button 
-                        onClick={() => setShowOwnerModal(true)}
-                        className="w-full flex items-center gap-4 p-3 rounded-xl hover:bg-gray-50 transition-colors border border-slate-100"
-                    >
-                        <div className="size-12 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden border-2 border-white shadow-sm">
-                            {formData.ownerImage ? (
-                                <img src={formData.ownerImage} alt="owner" className="w-full h-full object-cover" />
-                            ) : (
-                                <span className="material-symbols-outlined text-gray-400">person</span>
-                            )}
-                        </div>
-                        <div className="flex-1 text-left">
-                            <p className="font-bold text-lg text-text-main">{formData.owner || 'Select owner'}</p>
-                            {formData.owner && (
-                                <p className="text-xs text-text-tertiary">
-                                    {data.teamMembers.find(m => m.name === formData.owner)?.role || ''}
-                                </p>
-                            )}
-                        </div>
-                        <span className="material-symbols-outlined text-text-tertiary">chevron_right</span>
-                    </button>
-                </div>
-
-                {!editId && parentId && (
-                    <div className="flex items-center gap-2 justify-center text-text-tertiary">
-                        <span className="material-symbols-outlined text-[16px]">link</span>
-                        <span className="text-xs font-medium">Linked to parent Objective</span>
-                    </div>
-                )}
-            </div>
+          <KeyResultFormSection
+            formData={formData}
+            onFieldChange={handleChange}
+            editId={editId}
+            parentId={parentId}
+            data={{
+              teamMembers: data.teamMembers,
+            }}
+            showOwnerModal={showOwnerModal}
+            setShowOwnerModal={setShowOwnerModal}
+          />
         )}
 
         {/* FRIEND FORM */}

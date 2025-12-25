@@ -38,7 +38,7 @@ export const Growth: React.FC<GrowthProps> = ({ onNavigate, onMenuClick, onProfi
         </div>
       </div>
 
-      <main className="flex-1 overflow-y-auto overflow-x-hidden no-scrollbar pb-32 space-y-10">
+      <main className="flex-1 overflow-y-auto overflow-x-hidden no-scrollbar pb-32 lg:pb-8 space-y-10">
         {activeTab === 'learn' && (
             <>
             <section className="space-y-8 pt-2">

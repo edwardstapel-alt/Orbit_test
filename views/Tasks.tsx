@@ -3,6 +3,10 @@ import { useData } from '../context/DataContext';
 import { EntityType, View } from '../types';
 import { TopNav } from '../components/TopNav';
 import { EntityFilter, FilterState } from '../components/EntityFilter';
+import { useSelection } from '../context/SelectionContext';
+import { useLongPress } from '../hooks/useLongPress';
+import { SwipeableTask } from '../components/SwipeableTask';
+import { MultiSelectToolbar } from '../components/MultiSelectToolbar';
 
 interface TasksProps {
   onEdit: (type: EntityType, id?: string) => void;
@@ -12,10 +16,50 @@ interface TasksProps {
 }
 
 export const Tasks: React.FC<TasksProps> = ({ onEdit, onNavigate, onMenuClick, onProfileClick }) => {
-  const { tasks, habits, friends, updateTask, updateHabit, addTask, keyResults, updateKeyResult } = useData();
+  const { 
+    tasks, 
+    habits, 
+    friends, 
+    updateTask, 
+    updateHabit, 
+    addTask, 
+    keyResults, 
+    updateKeyResult,
+    deleteTask,
+    archiveTask,
+    deleteHabit
+  } = useData();
+  
+  const {
+    isSelectMode,
+    enterSelectMode,
+    exitSelectMode,
+    toggleSelection,
+    isSelected,
+    getSelectedCount,
+    getSelectedIds,
+    clearSelection
+  } = useSelection();
+
   const [activeModal, setActiveModal] = useState<'addTask' | 'addHabit' | null>(null);
   const [referenceDate, setReferenceDate] = useState(new Date());
   const [filters, setFilters] = useState<FilterState>({});
+  
+  const isTaskSelectMode = isSelectMode.get('task') || false;
+  const isHabitSelectMode = isSelectMode.get('habit') || false;
+
+  // Handle bulk actions
+  const handleTasksDelete = (taskIds: string[]) => {
+    taskIds.forEach(id => deleteTask(id));
+    clearSelection('task');
+    exitSelectMode('task');
+  };
+
+  const handleHabitsDelete = (habitIds: string[]) => {
+    habitIds.forEach(id => deleteHabit(id));
+    clearSelection('habit');
+    exitSelectMode('habit');
+  };
 
   // Date Helpers
   const getStartOfWeek = (date: Date) => {
@@ -128,7 +172,7 @@ export const Tasks: React.FC<TasksProps> = ({ onEdit, onNavigate, onMenuClick, o
         onProfileClick={onProfileClick}
       />
 
-      <main className="flex-1 overflow-y-auto no-scrollbar px-5 pb-24 pt-2">
+      <main className="flex-1 overflow-y-auto no-scrollbar px-5 pb-32 lg:pb-8 pt-2">
         
         {/* Functional Date Selector */}
         <div className="flex items-center justify-between bg-white rounded-xl p-2 mb-4 border border-slate-100 shadow-sm mt-2">
@@ -188,11 +232,32 @@ export const Tasks: React.FC<TasksProps> = ({ onEdit, onNavigate, onMenuClick, o
 
                         const percent = daysPassed === 0 ? 0 : Math.round((completionCount / daysPassed) * 100);
 
+                        const habitSelected = isSelected('habit', habit.id);
+                        const longPressHandlers = useLongPress({
+                          onLongPress: () => {
+                            if (!isHabitSelectMode) {
+                              enterSelectMode('habit');
+                            }
+                            toggleSelection('habit', habit.id);
+                          },
+                          onClick: () => {
+                            if (isHabitSelectMode) {
+                              toggleSelection('habit', habit.id);
+                            } else {
+                              onEdit('habit', habit.id);
+                            }
+                          }
+                        });
+
                         return (
                         <div 
                             key={habit.id} 
-                            onClick={() => onEdit('habit', habit.id)}
-                            className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex flex-col gap-4 cursor-pointer hover:shadow-md hover:border-primary/20 transition-all active:scale-[0.99]"
+                            className={`bg-white rounded-2xl p-4 shadow-sm border-2 flex flex-col gap-4 cursor-pointer hover:shadow-md transition-all active:scale-[0.99] ${
+                              habitSelected 
+                                ? 'border-primary bg-primary/5' 
+                                : 'border-slate-100 hover:border-primary/20'
+                            }`}
+                            {...longPressHandlers}
                         >
                             <div className="flex items-center gap-3">
                                 <div className="size-10 rounded-full bg-slate-50 flex items-center justify-center text-text-secondary shrink-0">
@@ -280,47 +345,122 @@ export const Tasks: React.FC<TasksProps> = ({ onEdit, onNavigate, onMenuClick, o
            {filteredTasks.length === 0 && tasks.length === 0 && (
              <div className="text-center text-text-tertiary py-4 text-sm">No tasks for today.</div>
            )}
-          {filteredTasks.map((task, i) => (
-            <div key={task.id} className="group flex items-start gap-3 p-3 rounded-lg hover:bg-white/60 transition-colors border border-transparent hover:border-slate-200">
-              <label className="relative flex items-center justify-center pt-1 cursor-pointer">
-                <input 
-                    className="peer appearance-none size-6 border-2 border-slate-300 rounded-lg bg-transparent checked:bg-primary checked:border-primary focus:ring-0 focus:outline-none transition-all" 
-                    type="checkbox" 
-                    checked={task.completed}
-                    onChange={() => toggleTodo(task.id)}
-                />
-                <span className="material-symbols-outlined absolute text-white opacity-0 peer-checked:opacity-100 text-[16px] pointer-events-none font-bold top-[6px]">check</span>
-              </label>
-              <div className="flex-1 pt-[2px]" onClick={() => onEdit('task', task.id)}>
-                <p className={`text-[15px] font-medium leading-snug transition-colors ${task.completed ? 'text-text-tertiary line-through' : 'text-text-main group-hover:text-primary'}`}>{task.title}</p>
-                <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-200 text-text-secondary">
-                    {task.tag}
-                  </span>
-                  {task.friendId && (() => {
-                    const friend = friends.find(f => f.id === task.friendId);
-                    return friend ? (
-                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-primary/10 text-primary border border-primary/20">
-                        {friend.image ? (
-                          <img 
-                            src={friend.image} 
-                            alt={friend.name}
-                            className="size-4 rounded-full object-cover border border-primary/20"
-                          />
-                        ) : (
-                          <span className="material-symbols-outlined text-[12px]">person</span>
-                        )}
-                        {friend.name}
-                      </span>
-                    ) : null;
-                  })()}
+          {filteredTasks.map((task, i) => {
+            const taskSelected = isSelected('task', task.id);
+            const longPressHandlers = useLongPress({
+              onLongPress: () => {
+                if (!isTaskSelectMode) {
+                  enterSelectMode('task');
+                  toggleSelection('task', task.id);
+                }
+              },
+              onClick: () => {
+                // onClick is handled by the div's onClick handler below
+              }
+            });
+
+            const taskContent = (
+              <div 
+                key={task.id} 
+                className={`group flex items-start gap-3 p-3 rounded-lg transition-colors border-2 ${
+                  taskSelected 
+                    ? 'border-primary bg-primary/5 hover:bg-primary/10' 
+                    : 'border-transparent hover:border-slate-200 hover:bg-white/60'
+                }`}
+                onClick={() => {
+                  if (isTaskSelectMode) {
+                    toggleSelection('task', task.id);
+                  } else {
+                    onEdit('task', task.id);
+                  }
+                }}
+              >
+                <label 
+                  className="relative flex items-center justify-center pt-1 cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (isTaskSelectMode) {
+                      toggleSelection('task', task.id);
+                    } else {
+                      toggleTodo(task.id);
+                    }
+                  }}
+                >
+                  <input 
+                      className={`peer appearance-none size-6 border-2 rounded-lg bg-transparent focus:ring-0 focus:outline-none transition-all ${
+                        taskSelected
+                          ? 'border-primary bg-primary checked:bg-primary'
+                          : 'border-slate-300 checked:bg-primary checked:border-primary'
+                      }`}
+                      type="checkbox" 
+                      checked={taskSelected || task.completed}
+                      onChange={() => {
+                        if (isTaskSelectMode) {
+                          toggleSelection('task', task.id);
+                        } else {
+                          toggleTodo(task.id);
+                        }
+                      }}
+                  />
+                  <span className="material-symbols-outlined absolute text-white opacity-0 peer-checked:opacity-100 text-[16px] pointer-events-none font-bold top-[6px]">check</span>
+                </label>
+                <div className="flex-1 pt-[2px]">
+                  <p className={`text-[15px] font-medium leading-snug transition-colors ${task.completed ? 'text-text-tertiary line-through' : 'text-text-main group-hover:text-primary'}`}>{task.title}</p>
+                  <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-200 text-text-secondary">
+                      {task.tag}
+                    </span>
+                    {task.friendId && (() => {
+                      const friend = friends.find(f => f.id === task.friendId);
+                      return friend ? (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-primary/10 text-primary border border-primary/20">
+                          {friend.image ? (
+                            <img 
+                              src={friend.image} 
+                              alt={friend.name}
+                              className="size-4 rounded-full object-cover border border-primary/20"
+                            />
+                          ) : (
+                            <span className="material-symbols-outlined text-[12px]">person</span>
+                          )}
+                          {friend.name}
+                        </span>
+                      ) : null;
+                    })()}
+                  </div>
                 </div>
+                {!isTaskSelectMode && (
+                  <button className="text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing p-1">
+                    <span className="material-symbols-outlined text-[18px]">drag_indicator</span>
+                  </button>
+                )}
               </div>
-              <button className="text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing p-1">
-                <span className="material-symbols-outlined text-[18px]">drag_indicator</span>
-              </button>
-            </div>
-          ))}
+            );
+
+            // Wrap in SwipeableTask if not in select mode
+            if (isTaskSelectMode) {
+              return taskContent;
+            }
+
+            return (
+              <SwipeableTask
+                key={task.id}
+                task={task}
+                onDelete={() => deleteTask(task.id)}
+                onArchive={() => archiveTask(task.id)}
+                onToggle={() => toggleTodo(task.id)}
+                onEdit={() => onEdit('task', task.id)}
+                onLongPress={() => {
+                  if (!isTaskSelectMode) {
+                    enterSelectMode('task');
+                    toggleSelection('task', task.id);
+                  }
+                }}
+              >
+                {taskContent}
+              </SwipeableTask>
+            );
+          })}
           
           {/* Add Task Button */}
           <button
@@ -345,6 +485,41 @@ export const Tasks: React.FC<TasksProps> = ({ onEdit, onNavigate, onMenuClick, o
           </div>
         </section>
       </main>
+
+      {/* Multi-Select Toolbars */}
+      {isTaskSelectMode && (
+        <MultiSelectToolbar
+          entityType="task"
+          onDelete={handleTasksDelete}
+          onEdit={(id) => {
+            exitSelectMode('task');
+            onEdit('task', id);
+          }}
+          onCancel={() => {
+            exitSelectMode('task');
+            clearSelection('task');
+          }}
+          entityName="Task"
+          entityNamePlural="Tasks"
+        />
+      )}
+
+      {isHabitSelectMode && (
+        <MultiSelectToolbar
+          entityType="habit"
+          onDelete={handleHabitsDelete}
+          onEdit={(id) => {
+            exitSelectMode('habit');
+            onEdit('habit', id);
+          }}
+          onCancel={() => {
+            exitSelectMode('habit');
+            clearSelection('habit');
+          }}
+          entityName="Habit"
+          entityNamePlural="Habits"
+        />
+      )}
 
       {/* Add Task Modal */}
       {activeModal === 'addTask' && (

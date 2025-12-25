@@ -76,7 +76,7 @@ export const TasksOverview: React.FC<TasksOverviewProps> = ({ onNavigate, onEdit
         showBack={!!onBack}
       />
 
-      <main className="flex-1 overflow-y-auto no-scrollbar pb-32 px-6 md:px-12 lg:px-16 pt-6">
+      <main className="flex-1 overflow-y-auto no-scrollbar pb-32 lg:pb-8 px-6 md:px-12 lg:px-16 pt-6">
         <div className="max-w-6xl mx-auto">
           {/* Header Actions */}
           <div className="flex items-center justify-between mb-6">

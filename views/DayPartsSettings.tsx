@@ -94,7 +94,7 @@ export const DayPartsSettings: React.FC<DayPartsSettingsProps> = ({ onBack, onNa
   };
 
   return (
-    <div className="flex flex-col w-full h-full bg-background min-h-screen pb-24 overflow-y-auto">
+    <div className="flex flex-col w-full h-full bg-background min-h-screen pb-32 lg:pb-8 overflow-y-auto">
       <header className="sticky top-0 z-20 bg-background/95 backdrop-blur-md px-6 py-4 flex items-center gap-4 border-b border-slate-200/50">
         <button onClick={onBack} className="size-10 -ml-2 flex items-center justify-center rounded-full hover:bg-slate-200 transition-colors text-text-main">
           <span className="material-symbols-outlined">arrow_back</span>

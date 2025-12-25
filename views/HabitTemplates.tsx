@@ -86,7 +86,7 @@ export const HabitTemplates: React.FC<HabitTemplatesProps> = ({
   };
 
   return (
-    <div className="flex flex-col w-full h-full overflow-y-auto pb-32">
+    <div className="flex flex-col w-full h-full overflow-y-auto pb-32 lg:pb-8">
       <TopNav
         title="Habit Templates"
         subtitle={`${filteredTemplates.length} templates beschikbaar`}

@@ -76,7 +76,7 @@ export const Relationships: React.FC<RelationshipsProps> = ({ onFriendSelect, on
         </div>
       </div>
 
-      <main className="flex-1 px-4 py-2 pb-32 space-y-4">
+      <main className="flex-1 px-4 py-2 pb-32 lg:pb-8 space-y-4">
         {filteredFriends.map((friend) => (
           <div 
             key={friend.id} 

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Friend, EntityType } from './types';
 import { DataProvider } from './context/DataContext';
+import { SelectionProvider, useSelection } from './context/SelectionContext';
 import { BottomNav } from './components/BottomNav';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './views/Dashboard';
@@ -39,7 +40,8 @@ import { MonthlyReview } from './views/MonthlyReview';
 import { Retrospective } from './views/Retrospective';
 import { ReviewsOverview } from './views/ReviewsOverview';
 
-export default function App() {
+// Inner component that uses SelectionContext
+const AppContent = () => {
   const [currentView, setCurrentView] = useState<View>(View.DASHBOARD);
   const [selectedFriend, setSelectedFriend] = useState<Friend | null>(null);
   const [showSearch, setShowSearch] = useState(false);
@@ -259,7 +261,9 @@ export default function App() {
       case View.DATA_MANAGEMENT:
         return <DataManagement onBack={navigateBackToSettings} />;
       case View.FIREBASE_AUTH:
-        return <FirebaseAuth onBack={navigateBackToSettings} onAuthenticated={() => navigateBackToSettings()} />;
+        // Redirect to SyncedAccounts instead (unified login)
+        navigateTo(View.SYNCED_ACCOUNTS);
+        return null;
       case View.CONFLICT_MANAGEMENT:
         return <ConflictManagement onNavigate={navigateTo} onMenuClick={openMenu} onProfileClick={openProfile} />;
       case View.DAY_PARTS_SETTINGS:
@@ -449,6 +453,12 @@ export default function App() {
                   onMenuClick={openMenu}
                   onProfileClick={openProfile}
                />;
+      case View.TEMPLATE_LIBRARY:
+        return <TemplateLibrary 
+                  onBack={navigateBack}
+                  onEdit={openEditor}
+                  onNavigate={navigateTo}
+               />;
       default:
         return <Dashboard 
                 onNavigate={navigateTo} 
@@ -460,30 +470,48 @@ export default function App() {
     }
   };
 
-  const showBottomNav = 
-    currentView !== View.FRIEND_DETAIL && 
-    currentView !== View.PROFILE && 
-    currentView !== View.SETTINGS && 
-    currentView !== View.SYNCED_ACCOUNTS && 
-    currentView !== View.TEAM_SETTINGS && 
-    currentView !== View.DATA_MANAGEMENT && 
-    currentView !== View.DAY_PARTS_SETTINGS &&
-    currentView !== View.NOTIFICATIONS &&
-    currentView !== View.CONFLICT_MANAGEMENT &&
-    currentView !== View.OBJECTIVE_DETAIL &&
-    currentView !== View.HABIT_DETAIL &&
-    currentView !== View.MAP &&
-    currentView !== View.EDITOR &&
-    currentView !== View.RELATIONSHIPS &&
-    currentView !== View.FIREBASE_AUTH &&
-    currentView !== View.WEEKLY_REVIEW &&
-    currentView !== View.MONTHLY_REVIEW &&
-    currentView !== View.RETROSPECTIVE &&
-    currentView !== View.REVIEWS_OVERVIEW; 
+  const { isSelectMode } = useSelection();
+  
+  // Check if any entity type is in select mode
+  const anySelectModeActive = Array.from(isSelectMode.values()).some(Boolean);
 
+  // Define views that should NOT show bottom nav
+  const viewsWithoutBottomNav = new Set([
+    View.FRIEND_DETAIL,
+    View.PROFILE,
+    View.SETTINGS,
+    View.SYNCED_ACCOUNTS,
+    View.TEAM_SETTINGS,
+    View.DATA_MANAGEMENT,
+    View.DAY_PARTS_SETTINGS,
+    View.NOTIFICATIONS,
+    View.CONFLICT_MANAGEMENT,
+    View.OBJECTIVE_DETAIL,
+    View.HABIT_DETAIL,
+    View.LIFE_AREA_DETAIL,
+    View.MAP,
+    View.EDITOR,
+    View.RELATIONSHIPS,
+    View.FIREBASE_AUTH,
+    View.WEEKLY_REVIEW,
+    View.MONTHLY_REVIEW,
+    View.RETROSPECTIVE,
+    View.REVIEWS_OVERVIEW,
+    View.TASKS_OVERVIEW,
+    View.TEMPLATE_LIBRARY,
+    View.GOAL_PLANS,
+    View.HABITS,
+    View.HABIT_ANALYTICS,
+    View.HABIT_TEMPLATES,
+    View.GOAL_TIMELINE,
+    View.CALENDAR,
+  ]);
+
+  // Hide bottom nav if in select mode or in a view that shouldn't show it
+  const showBottomNav = !anySelectModeActive && !viewsWithoutBottomNav.has(currentView);
+  
   return (
-    <DataProvider>
-        <div className="block lg:flex min-h-screen bg-background">
+    <div className="block lg:flex min-h-screen bg-background">
           {/* Sidebar - Desktop only */}
           <Sidebar 
             currentView={currentView} 
@@ -556,6 +584,15 @@ export default function App() {
             </div>
           </div>
         </div>
+  );
+};
+
+export default function App() {
+  return (
+    <DataProvider>
+      <SelectionProvider>
+        <AppContent />
+      </SelectionProvider>
     </DataProvider>
   );
 }

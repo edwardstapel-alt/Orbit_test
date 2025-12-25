@@ -62,7 +62,7 @@ export const ConflictManagement: React.FC<ConflictManagementProps> = () => {
   });
 
   return (
-    <div className="flex flex-col w-full h-full overflow-y-auto pb-32">
+    <div className="flex flex-col w-full h-full overflow-y-auto pb-32 lg:pb-8">
       <TopNav 
         title="Conflict Beheer" 
         subtitle={`${conflicts.length} conflict${conflicts.length !== 1 ? 'en' : ''} gedetecteerd`}

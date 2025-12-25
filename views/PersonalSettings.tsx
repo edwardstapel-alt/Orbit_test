@@ -60,7 +60,7 @@ export const PersonalSettings: React.FC<PersonalSettingsProps> = ({ onBack }) =>
         </div>
       </div>
 
-      <div className="px-6 space-y-6 pb-24">
+      <div className="px-6 space-y-6 pb-32 lg:pb-8">
           <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">

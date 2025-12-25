@@ -3,6 +3,9 @@ import { useData } from '../context/DataContext';
 import { View } from '../types';
 import { TopNav } from '../components/TopNav';
 import { calculateCompletionRate } from '../utils/habitAnalytics';
+import { useSelection } from '../context/SelectionContext';
+import { useLongPress } from '../hooks/useLongPress';
+import { MultiSelectToolbar } from '../components/MultiSelectToolbar';
 
 interface HabitsProps {
   onNavigate: (view: View, habitId?: string) => void;
@@ -13,10 +16,30 @@ interface HabitsProps {
 }
 
 export const Habits: React.FC<HabitsProps> = ({ onNavigate, onEdit, onMenuClick, onProfileClick, onBack }) => {
-  const { habits, objectives, lifeAreas } = useData();
+  const { habits, objectives, lifeAreas, deleteHabit } = useData();
+  
+  const {
+    isSelectMode,
+    enterSelectMode,
+    exitSelectMode,
+    toggleSelection,
+    isSelected,
+    getSelectedCount,
+    getSelectedIds,
+    clearSelection
+  } = useSelection();
+
   const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  
+  const isHabitSelectMode = isSelectMode.get('habit') || false;
+
+  const handleHabitsDelete = (habitIds: string[]) => {
+    habitIds.forEach(id => deleteHabit(id));
+    clearSelection('habit');
+    exitSelectMode('habit');
+  };
 
   // Get unique categories
   const categories = useMemo(() => {
@@ -47,7 +70,23 @@ export const Habits: React.FC<HabitsProps> = ({ onNavigate, onEdit, onMenuClick,
   }, [habits, filter, categoryFilter, searchTerm]);
 
   const handleHabitClick = (habitId: string) => {
-    onNavigate(View.HABIT_DETAIL, habitId);
+    if (isHabitSelectMode) {
+      toggleSelection('habit', habitId);
+    } else {
+      onNavigate(View.HABIT_DETAIL, habitId);
+    }
+  };
+
+  const handleHabitLongPress = (habitId: string) => {
+    if (!isHabitSelectMode) {
+      enterSelectMode('habit');
+      toggleSelection('habit', habitId);
+    }
+  };
+
+  const handleHabitEdit = (habitId: string) => {
+    exitSelectMode('habit');
+    onEdit('habit', habitId);
   };
 
   const getStreakColor = (streak: number) => {
@@ -67,7 +106,7 @@ export const Habits: React.FC<HabitsProps> = ({ onNavigate, onEdit, onMenuClick,
         showBack={!!onBack}
       />
 
-      <main className="flex-1 overflow-y-auto no-scrollbar pb-32 px-6 md:px-12 lg:px-16 pt-6">
+      <main className="flex-1 overflow-y-auto no-scrollbar pb-32 lg:pb-8 px-6 md:px-12 lg:px-16 pt-6">
         <div className="max-w-6xl mx-auto">
           {/* Header Actions */}
           <div className="flex items-center justify-between mb-6">
@@ -200,17 +239,41 @@ export const Habits: React.FC<HabitsProps> = ({ onNavigate, onEdit, onMenuClick,
                 const linkedObjectives = objectives.filter(obj => 
                   obj.habits?.includes(habit.id)
                 );
+                const habitIsSelected = isSelected('habit', habit.id);
+
+                const longPressHandlers = useLongPress({
+                  onLongPress: () => handleHabitLongPress(habit.id),
+                  onClick: () => handleHabitClick(habit.id),
+                });
 
                 return (
                   <div
                     key={habit.id}
-                    className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden group cursor-pointer hover:shadow-md transition-all"
-                    onClick={() => handleHabitClick(habit.id)}
+                    className={`bg-white rounded-3xl shadow-sm border-2 overflow-hidden group cursor-pointer hover:shadow-md transition-all ${
+                      habitIsSelected 
+                        ? 'border-primary bg-primary/5' 
+                        : 'border-slate-100'
+                    }`}
+                    {...longPressHandlers}
                   >
                     <div className="p-5">
                       {/* Header */}
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex items-center gap-3 flex-1 min-w-0">
+                          {/* Selection Checkbox */}
+                          {isHabitSelectMode && (
+                            <div className="shrink-0">
+                              <div className={`size-6 rounded-lg border-2 flex items-center justify-center transition-all ${
+                                habitIsSelected 
+                                  ? 'bg-primary border-primary' 
+                                  : 'border-gray-300 bg-white'
+                              }`}>
+                                {habitIsSelected && (
+                                  <span className="material-symbols-outlined text-white text-sm">check</span>
+                                )}
+                              </div>
+                            </div>
+                          )}
                           <div 
                             className="size-12 rounded-2xl flex items-center justify-center shrink-0"
                             style={{ backgroundColor: habit.color ? `${habit.color}20` : '#F3F4F6' }}
@@ -233,15 +296,17 @@ export const Habits: React.FC<HabitsProps> = ({ onNavigate, onEdit, onMenuClick,
                             )}
                           </div>
                         </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onEdit('habit', habit.id);
-                          }}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity p-2 hover:bg-gray-100 rounded-lg"
-                        >
-                          <span className="material-symbols-outlined text-text-tertiary text-xl">more_vert</span>
-                        </button>
+                        {!isHabitSelectMode && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onEdit('habit', habit.id);
+                            }}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-2 hover:bg-gray-100 rounded-lg"
+                          >
+                            <span className="material-symbols-outlined text-text-tertiary text-xl">more_vert</span>
+                          </button>
+                        )}
                       </div>
 
                       {/* Stats */}
@@ -304,6 +369,21 @@ export const Habits: React.FC<HabitsProps> = ({ onNavigate, onEdit, onMenuClick,
           )}
         </div>
       </main>
+
+      {/* Multi-Select Toolbar */}
+      {isHabitSelectMode && (
+        <MultiSelectToolbar
+          entityType="habit"
+          onDelete={handleHabitsDelete}
+          onEdit={getSelectedCount('habit') === 1 ? () => handleHabitEdit(getSelectedIds('habit')[0]) : undefined}
+          onCancel={() => {
+            exitSelectMode('habit');
+            clearSelection('habit');
+          }}
+          entityName="Habit"
+          entityNamePlural="Habits"
+        />
+      )}
     </div>
   );
 };

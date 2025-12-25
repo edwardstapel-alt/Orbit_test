@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
 import { TopNav } from '../components/TopNav';
 import { View } from '../types';
+import { useSelection } from '../context/SelectionContext';
+import { useLongPress } from '../hooks/useLongPress';
+import { MultiSelectToolbar } from '../components/MultiSelectToolbar';
 
 interface ObjectivesOverviewProps {
   onViewObjective: (id: string) => void;
@@ -12,10 +15,49 @@ interface ObjectivesOverviewProps {
 }
 
 export const ObjectivesOverview: React.FC<ObjectivesOverviewProps> = ({ onViewObjective, onEdit, onNavigate, onMenuClick, onProfileClick }) => {
-  const { objectives, keyResults, lifeAreas, showCategory } = useData();
+  const { objectives, keyResults, lifeAreas, showCategory, deleteObjective } = useData();
   const [lifeAreaFilter, setLifeAreaFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'list' | 'timeline'>('list');
   const [activeModal, setActiveModal] = useState<'addObjective' | null>(null);
+  
+  const {
+    isSelectMode,
+    enterSelectMode,
+    exitSelectMode,
+    toggleSelection,
+    isSelected,
+    getSelectedCount,
+    getSelectedIds,
+    clearSelection
+  } = useSelection();
+
+  const isObjectiveSelectMode = isSelectMode.get('objective') || false;
+
+  const handleObjectivesDelete = (objectiveIds: string[]) => {
+    objectiveIds.forEach(id => deleteObjective(id));
+    clearSelection('objective');
+    exitSelectMode('objective');
+  };
+
+  const handleObjectiveClick = (objectiveId: string) => {
+    if (isObjectiveSelectMode) {
+      toggleSelection('objective', objectiveId);
+    } else {
+      onViewObjective(objectiveId);
+    }
+  };
+
+  const handleObjectiveLongPress = (objectiveId: string) => {
+    if (!isObjectiveSelectMode) {
+      enterSelectMode('objective');
+      toggleSelection('objective', objectiveId);
+    }
+  };
+
+  const handleObjectiveEdit = (objectiveId: string) => {
+    exitSelectMode('objective');
+    onEdit('objective', objectiveId);
+  };
 
   const filteredObjectives = objectives.filter(obj => {
     // Life Area filter
@@ -120,7 +162,7 @@ export const ObjectivesOverview: React.FC<ObjectivesOverviewProps> = ({ onViewOb
         </div>
       </div>
 
-      <main className="flex-1 overflow-y-auto no-scrollbar px-6 pb-32 space-y-6">
+      <main className="flex-1 overflow-y-auto no-scrollbar px-6 pb-32 lg:pb-8 space-y-6">
         {filteredObjectives.length === 0 && (
             <div className="flex flex-col items-center justify-center py-12 text-center opacity-60">
                 <span className="material-symbols-outlined text-4xl text-text-tertiary mb-2">flag</span>
@@ -135,10 +177,35 @@ export const ObjectivesOverview: React.FC<ObjectivesOverviewProps> = ({ onViewOb
                 : obj.progress;
              const lifeArea = lifeAreas.find(la => la.id === obj.lifeAreaId);
 
+             const objIsSelected = isSelected('objective', obj.id);
+
+             const objLongPressHandlers = useLongPress({
+               onLongPress: () => handleObjectiveLongPress(obj.id),
+               onClick: () => handleObjectiveClick(obj.id),
+             });
+
              return (
-                <div key={obj.id} onClick={() => onViewObjective(obj.id)} className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 hover:shadow-soft transition-all cursor-pointer group active:scale-[0.99]">
+                <div key={obj.id} {...objLongPressHandlers} className={`bg-white p-5 rounded-3xl shadow-sm border-2 hover:shadow-soft transition-all cursor-pointer group active:scale-[0.99] ${
+                  objIsSelected 
+                    ? 'border-primary bg-primary/5' 
+                    : 'border-slate-100'
+                }`}>
                     <div className="flex justify-between items-start mb-4">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          {isObjectiveSelectMode && (
+                            <div className="shrink-0">
+                              <div className={`size-6 rounded-lg border-2 flex items-center justify-center transition-all ${
+                                objIsSelected 
+                                  ? 'bg-primary border-primary' 
+                                  : 'border-gray-300 bg-white'
+                              }`}>
+                                {objIsSelected && (
+                                  <span className="material-symbols-outlined text-white text-sm">check</span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                          <div className="flex items-center gap-2">
                              <div className={`size-2 rounded-full ${obj.status === 'On Track' ? 'bg-green-500' : obj.status === 'At Risk' ? 'bg-amber-500' : 'bg-red-500'}`}></div>
                              {lifeArea && (
                                <span 
@@ -152,6 +219,7 @@ export const ObjectivesOverview: React.FC<ObjectivesOverviewProps> = ({ onViewOb
                              {showCategory && (
                                <span className="text-xs font-bold text-text-tertiary uppercase tracking-wider">{obj.category}</span>
                              )}
+                          </div>
                         </div>
                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${getStatusColor(obj.status)}`}>{obj.status}</span>
                     </div>
@@ -203,20 +271,37 @@ export const ObjectivesOverview: React.FC<ObjectivesOverviewProps> = ({ onViewOb
         })}
 
         {/* Add Objective Button */}
-        <button
-          onClick={() => setActiveModal('addObjective')}
-          className="w-full bg-white rounded-2xl shadow-sm border-2 border-dashed border-slate-200 p-6 hover:border-primary/50 hover:bg-primary/5 transition-colors group"
-        >
-          <div className="flex items-center justify-center gap-3">
-            <span className="material-symbols-outlined text-text-tertiary group-hover:text-primary transition-colors">
-              add_circle
-            </span>
-            <span className="text-sm font-semibold text-text-secondary group-hover:text-primary transition-colors">
-              Add Objective
-            </span>
-          </div>
-        </button>
+        {!isObjectiveSelectMode && (
+          <button
+            onClick={() => setActiveModal('addObjective')}
+            className="w-full bg-white rounded-2xl shadow-sm border-2 border-dashed border-slate-200 p-6 hover:border-primary/50 hover:bg-primary/5 transition-colors group"
+          >
+            <div className="flex items-center justify-center gap-3">
+              <span className="material-symbols-outlined text-text-tertiary group-hover:text-primary transition-colors">
+                add_circle
+              </span>
+              <span className="text-sm font-semibold text-text-secondary group-hover:text-primary transition-colors">
+                Add Objective
+              </span>
+            </div>
+          </button>
+        )}
       </main>
+
+      {/* Multi-Select Toolbar */}
+      {isObjectiveSelectMode && (
+        <MultiSelectToolbar
+          entityType="objective"
+          onDelete={handleObjectivesDelete}
+          onEdit={getSelectedCount('objective') === 1 ? () => handleObjectiveEdit(getSelectedIds('objective')[0]) : undefined}
+          onCancel={() => {
+            exitSelectMode('objective');
+            clearSelection('objective');
+          }}
+          entityName="Objective"
+          entityNamePlural="Objectives"
+        />
+      )}
 
       {/* Add Objective Modal */}
       {activeModal === 'addObjective' && (

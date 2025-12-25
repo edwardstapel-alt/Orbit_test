@@ -159,6 +159,9 @@ export interface Task {
   syncMetadata?: SyncMetadata;
   googleTaskId?: string; // Google Tasks ID
   asanaTaskId?: string; // Asana Task ID
+  // Archive fields
+  archived?: boolean; // Soft delete - can be restored
+  archivedAt?: string; // ISO timestamp when archived
   // Recurring fields
   recurring?: {
     pattern: 'daily' | 'weekly' | 'monthly' | 'yearly' | 'custom';
@@ -649,6 +652,8 @@ export interface DataContextType {
   addTask: (task: Task) => void;
   updateTask: (task: Task) => void;
   deleteTask: (id: string) => void;
+  archiveTask: (id: string) => void;
+  unarchiveTask: (id: string) => void;
   deleteCompletedTasks: () => number; // Returns number of deleted tasks
   
   addHabit: (habit: Habit) => void;

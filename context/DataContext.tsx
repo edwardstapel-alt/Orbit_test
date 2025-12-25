@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { Task, Habit, Friend, Objective, KeyResult, Place, TeamMember, DataContextType, UserProfile, LifeArea, Vision, TimeSlot, DayPart, StatusUpdate, Conflict, ConflictResolution, ConflictResolutionConfig, Reminder, Notification, NotificationSettings, EntityType, TaskTemplate, ObjectiveTemplate, QuickAction, View, Review, Retrospective, ReviewInsight, ActionPlanProgress } from '../types';
 import { syncService, DataContextCallbacks } from '../utils/syncService';
 import { importGoogleTasks, detectDuplicateAppTasks, mergeAppTasks, getAccessToken } from '../utils/googleSync';
-import { recordHabitCompletion, recordHabitMiss } from '../utils/habitHistory';
+import { recordHabitCompletion, recordHabitMiss, calculateStreak } from '../utils/habitHistory';
 import { isAuthenticated, onAuthStateChange } from '../utils/firebaseAuth';
 import { syncEntityToFirebase, syncAllFromFirebase, syncAllToFirebase, watchFirebaseChanges, deleteEntityFromFirebase, deleteAllUserDataFromFirebase } from '../utils/firebaseSync';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
@@ -275,6 +275,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   
   // Ref to track deletedTaskIds for use in closures (real-time listeners)
   const deletedTaskIdsRef = useRef(deletedTaskIds);
+  // Ref to prevent sync loop when Firebase listener updates state
+  const isSyncingDeletedTaskIdsRef = useRef(false);
+  
   useEffect(() => {
     deletedTaskIdsRef.current = deletedTaskIds;
   }, [deletedTaskIds]);
@@ -405,13 +408,25 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // Sync deletedTaskIds to Firebase (with both formats for backward compatibility)
   useEffect(() => {
+    // Prevent sync loop: don't sync if we're already syncing or if this update came from Firebase
+    if (isSyncingDeletedTaskIdsRef.current) {
+      return;
+    }
+    
     if (isAuthenticated() && deletedTaskIds.length > 0) {
+      isSyncingDeletedTaskIdsRef.current = true;
       syncEntityToFirebase('deletedTaskIds', { 
         ids: deletedTaskIds.map(e => e.id), // Old format for backward compatibility
         entries: deletedTaskIds // New format with timestamps
-      }, 'user').catch(err => 
-        console.error('Error syncing deletedTaskIds to Firebase:', err)
-      );
+      }, 'user').then(() => {
+        // Reset flag after a short delay to allow Firebase listener to process
+        setTimeout(() => {
+          isSyncingDeletedTaskIdsRef.current = false;
+        }, 1000);
+      }).catch(err => {
+        console.error('Error syncing deletedTaskIds to Firebase:', err);
+        isSyncingDeletedTaskIdsRef.current = false;
+      });
     }
   }, [deletedTaskIds]);
   // Theme management
@@ -520,19 +535,43 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
             if (hasFirebaseData) {
               // Merge strategy: merge Firebase data with local data, avoiding duplicates
-              // Helper function to merge arrays by ID, keeping the most recent version
-              const mergeArrays = <T extends { id: string }>(local: T[], firebase: T[], deletedIds: string[] = []): T[] => {
+              // Helper function to merge arrays by ID, keeping the most recent version based on updatedAt timestamp
+              const mergeArrays = <T extends { id: string; updatedAt?: string; createdAt?: string }>(local: T[], firebase: T[], deletedIds: string[] = []): T[] => {
                 const merged = new Map<string, T>();
+                
+                // Helper to get timestamp for comparison (prefer updatedAt, fallback to createdAt, then current time)
+                const getTimestamp = (item: T): number => {
+                  if (item.updatedAt) return new Date(item.updatedAt).getTime();
+                  if (item.createdAt) return new Date(item.createdAt).getTime();
+                  return 0; // No timestamp = oldest
+                };
+                
                 // First add all local items (exclude deleted)
                 local.forEach(item => {
                   if (!deletedIds.includes(item.id)) {
                     merged.set(item.id, item);
                   }
                 });
-                // Then add/update with Firebase items (exclude deleted), Firebase wins on conflict
+                
+                // Then add/update with Firebase items (exclude deleted)
+                // If both exist, keep the one with the most recent updatedAt timestamp
                 firebase.forEach(item => {
                   if (!deletedIds.includes(item.id)) {
-                    merged.set(item.id, item);
+                    const existing = merged.get(item.id);
+                    if (existing) {
+                      // Conflict: compare timestamps
+                      const localTime = getTimestamp(existing);
+                      const firebaseTime = getTimestamp(item);
+                      
+                      // Keep the most recent version
+                      if (firebaseTime > localTime) {
+                        merged.set(item.id, item); // Firebase is newer
+                      }
+                      // else keep local (already in map)
+                    } else {
+                      // New item from Firebase
+                      merged.set(item.id, item);
+                    }
                   }
                 });
                 return Array.from(merged.values());
@@ -653,20 +692,44 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const unsubscribers: (() => void)[] = [];
 
         // Watch for changes in Firebase - merge with local data to avoid duplicates
-        // Helper function to merge arrays by ID, keeping Firebase version if both exist
+        // Helper function to merge arrays by ID, keeping the most recent version based on updatedAt timestamp
         // Exclude deleted items
-        const mergeArrays = <T extends { id: string }>(local: T[], firebase: T[], deletedIds: string[] = []): T[] => {
+        const mergeArrays = <T extends { id: string; updatedAt?: string; createdAt?: string }>(local: T[], firebase: T[], deletedIds: string[] = []): T[] => {
           const merged = new Map<string, T>();
+          
+          // Helper to get timestamp for comparison (prefer updatedAt, fallback to createdAt, then current time)
+          const getTimestamp = (item: T): number => {
+            if (item.updatedAt) return new Date(item.updatedAt).getTime();
+            if (item.createdAt) return new Date(item.createdAt).getTime();
+            return 0; // No timestamp = oldest
+          };
+          
           // First add all local items (exclude deleted)
           local.forEach(item => {
             if (!deletedIds.includes(item.id)) {
               merged.set(item.id, item);
             }
           });
-          // Then add/update with Firebase items (exclude deleted), Firebase wins on conflict
+          
+          // Then add/update with Firebase items (exclude deleted)
+          // If both exist, keep the one with the most recent updatedAt timestamp
           firebase.forEach(item => {
             if (!deletedIds.includes(item.id)) {
-              merged.set(item.id, item);
+              const existing = merged.get(item.id);
+              if (existing) {
+                // Conflict: compare timestamps
+                const localTime = getTimestamp(existing);
+                const firebaseTime = getTimestamp(item);
+                
+                // Keep the most recent version
+                if (firebaseTime > localTime) {
+                  merged.set(item.id, item); // Firebase is newer
+                }
+                // else keep local (already in map)
+              } else {
+                // New item from Firebase
+                merged.set(item.id, item);
+              }
             }
           });
           return Array.from(merged.values());
@@ -675,6 +738,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         // Watch deletedTaskIds from Firebase
         unsubscribers.push(watchFirebaseChanges('deletedTaskIds', (firebaseDeleted) => {
           if (isClearingData) return;
+          
+          // Set flag to prevent sync loop when we update from Firebase
+          isSyncingDeletedTaskIdsRef.current = true;
+          
           if (firebaseDeleted.length > 0) {
             const firebaseData = firebaseDeleted[0];
             setDeletedTaskIds(prev => {
@@ -707,8 +774,20 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 }
               });
               
-              return Array.from(mergedMap.values());
+              const merged = Array.from(mergedMap.values());
+              
+              // Reset flag after state update (use setTimeout to ensure state update completes)
+              setTimeout(() => {
+                isSyncingDeletedTaskIdsRef.current = false;
+              }, 500);
+              
+              return merged;
             });
+          } else {
+            // No Firebase data, reset flag immediately
+            setTimeout(() => {
+              isSyncingDeletedTaskIdsRef.current = false;
+            }, 500);
           }
         }));
 
@@ -738,17 +817,50 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const filteredLocal = prev.filter(t => !currentDeletedIds.includes(t.id));
             const filteredFirebase = firebaseTasks.filter(t => !currentDeletedIds.includes(t.id));
             
-            // Merge arrays: Firebase wins on conflict (newer data)
+            // Log if any deleted tasks were filtered out
+            const deletedFromLocal = prev.filter(t => currentDeletedIds.includes(t.id));
+            const deletedFromFirebase = firebaseTasks.filter(t => currentDeletedIds.includes(t.id));
+            if (deletedFromLocal.length > 0 || deletedFromFirebase.length > 0) {
+              console.log('🔒 Filtered out deleted tasks:', {
+                fromLocal: deletedFromLocal.length,
+                fromFirebase: deletedFromFirebase.length,
+                deletedIds: [...new Set([...deletedFromLocal.map(t => t.id), ...deletedFromFirebase.map(t => t.id)])]
+              });
+            }
+            
+            // Merge arrays: keep the most recent version based on updatedAt timestamp
             const merged = new Map<string, Task>();
+            
+            // Helper to get timestamp for comparison
+            const getTimestamp = (task: Task): number => {
+              if (task.updatedAt) return new Date(task.updatedAt).getTime();
+              if (task.createdAt) return new Date(task.createdAt).getTime();
+              return 0; // No timestamp = oldest
+            };
             
             // First add all local items
             filteredLocal.forEach(item => {
               merged.set(item.id, item);
             });
             
-            // Then add/update with Firebase items (Firebase wins on conflict)
+            // Then add/update with Firebase items
+            // If both exist, keep the one with the most recent updatedAt timestamp
             filteredFirebase.forEach(item => {
-              merged.set(item.id, item);
+              const existing = merged.get(item.id);
+              if (existing) {
+                // Conflict: compare timestamps
+                const localTime = getTimestamp(existing);
+                const firebaseTime = getTimestamp(item);
+                
+                // Keep the most recent version
+                if (firebaseTime > localTime) {
+                  merged.set(item.id, item); // Firebase is newer
+                }
+                // else keep local (already in map)
+              } else {
+                // New item from Firebase
+                merged.set(item.id, item);
+              }
             });
             
             const mergedArray = Array.from(merged.values());
@@ -858,6 +970,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       getObjectives: () => objectives,
       addTask: (task: Task) => addTask(task),
       updateTask: (task: Task) => updateTask(task),
+      archiveTask: (id: string) => archiveTask(id),
+      unarchiveTask: (id: string) => unarchiveTask(id),
       addTimeSlot: (timeSlot: TimeSlot) => addTimeSlot(timeSlot),
       updateTimeSlot: (timeSlot: TimeSlot) => updateTimeSlot(timeSlot),
       updateObjective: (objective: Objective) => updateObjective(objective),
@@ -872,17 +986,13 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const updated = { ...prev, ...profile };
       // Auto-sync to Firebase (profile is stored in users/{userId}/profile/data)
       if (isAuthenticated()) {
-        const userId = auth.currentUser?.uid;
-        if (userId) {
-          const profileRef = doc(db, `users/${userId}/profile`, 'data');
-          setDoc(profileRef, {
-            ...updated,
-            updatedAt: serverTimestamp(),
-            syncedAt: serverTimestamp(),
-          }, { merge: true }).catch(error => {
-            console.error('Error syncing userProfile to Firebase:', error);
-          });
-        }
+        // Use rate limiter for profile sync too
+        syncEntityToFirebase('profile', {
+          ...updated,
+          updatedAt: new Date().toISOString(),
+        }, 'data').catch(error => {
+          console.error('Error syncing userProfile to Firebase:', error);
+        });
       }
       return updated;
     });
@@ -896,10 +1006,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       updateTask(item);
       return;
     }
-    // Add createdAt timestamp if not present
+    // Add timestamps if not present (critical for merge resolution)
     const taskWithTimestamp: Task = {
       ...item,
-      createdAt: item.createdAt || new Date().toISOString()
+      createdAt: item.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString() // Always set updatedAt for new items
     };
     console.log('➕ Adding task:', {
       id: taskWithTimestamp.id,
@@ -928,16 +1039,69 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
   const updateTask = (item: Task) => {
-    setTasks(tasks.map(t => t.id === item.id ? item : t));
+    // Ensure updatedAt timestamp is set for proper merge resolution
+    const taskWithTimestamp: Task = {
+      ...item,
+      updatedAt: new Date().toISOString(),
+      createdAt: item.createdAt || new Date().toISOString()
+    };
+    
+    setTasks(tasks.map(t => t.id === item.id ? taskWithTimestamp : t));
     // Auto-sync to Google Tasks
-    syncService.queueSync('task', 'update', item.id, item);
+    syncService.queueSync('task', 'update', item.id, taskWithTimestamp);
     // Auto-sync to Firebase (async, fire and forget)
     if (isAuthenticated()) {
-      syncEntityToFirebase('tasks', item, item.id).catch(error => {
-        console.error('Error syncing task to Firebase:', error);
+      syncEntityToFirebase('tasks', taskWithTimestamp, taskWithTimestamp.id)
+        .then(result => {
+          if (!result.success) {
+            console.warn('⚠️ Task sync failed, will retry on next change:', result.error);
+          }
+        })
+        .catch(error => {
+          console.error('❌ Error syncing task to Firebase:', error);
+        });
+    }
+  };
+  const archiveTask = (id: string) => {
+    const task = tasks.find(t => t.id === id);
+    if (!task) return;
+
+    const archivedTask: Task = {
+      ...task,
+      archived: true,
+      archivedAt: new Date().toISOString()
+    };
+
+    setTasks(tasks.map(t => t.id === id ? archivedTask : t));
+    
+    // Auto-sync to Firebase
+    if (isAuthenticated()) {
+      syncEntityToFirebase('tasks', archivedTask, id).catch(error => {
+        console.error('Error archiving task to Firebase:', error);
       });
     }
   };
+
+  const unarchiveTask = (id: string) => {
+    const task = tasks.find(t => t.id === id);
+    if (!task || !task.archived) return;
+
+    const unarchivedTask: Task = {
+      ...task,
+      archived: false,
+      archivedAt: undefined
+    };
+
+    setTasks(tasks.map(t => t.id === id ? unarchivedTask : t));
+    
+    // Auto-sync to Firebase
+    if (isAuthenticated()) {
+      syncEntityToFirebase('tasks', unarchivedTask, id).catch(error => {
+        console.error('Error unarchiving task to Firebase:', error);
+      });
+    }
+  };
+
   const deleteTask = (id: string) => {
     const task = tasks.find(t => t.id === id);
     setTasks(tasks.filter(t => t.id !== id));
@@ -1028,25 +1192,79 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       updateHabit(newItem);
       return;
     }
+    const now = new Date().toISOString();
     const newItem = {
         ...item,
-        weeklyProgress: item.weeklyProgress || [false, false, false, false, false, false, false]
+        weeklyProgress: item.weeklyProgress || [false, false, false, false, false, false, false],
+        createdAt: item.createdAt || now,
+        updatedAt: now // Always set updatedAt for new items
     };
     setHabits([...habits, newItem]);
     // Auto-sync to Firebase
     if (isAuthenticated()) {
-      syncEntityToFirebase('habits', newItem, newItem.id).catch(error => {
-        console.error('Error syncing habit to Firebase:', error);
-      });
+      syncEntityToFirebase('habits', newItem, newItem.id)
+        .then(result => {
+          if (!result.success) {
+            console.warn('⚠️ Habit sync failed:', result.error);
+          }
+        })
+        .catch(error => {
+          console.error('❌ Error syncing habit to Firebase:', error);
+        });
     }
   };
   const updateHabit = (item: Habit) => {
-    setHabits(habits.map(h => h.id === item.id ? item : h));
+    // If monthlyHistory exists, recalculate streak to ensure consistency
+    let updatedItem = item;
+    if (item.monthlyHistory && Object.keys(item.monthlyHistory).length > 0) {
+      const recalculatedStreak = calculateStreak(item.monthlyHistory);
+      const today = new Date().toISOString().split('T')[0];
+      const isCompletedToday = item.monthlyHistory[today] === true;
+      
+      updatedItem = {
+        ...item,
+        streak: recalculatedStreak,
+        completed: isCompletedToday,
+        // Ensure longestStreak is updated if current streak is longer
+        longestStreak: Math.max(item.longestStreak || 0, recalculatedStreak)
+      };
+      
+      // Sync weeklyProgress with monthlyHistory for backward compatibility
+      if (item.monthlyHistory) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const weeklyProgress = [false, false, false, false, false, false, false];
+        
+        for (let i = 0; i < 7; i++) {
+          const checkDate = new Date(today);
+          checkDate.setDate(today.getDate() - i);
+          const dateStr = checkDate.toISOString().split('T')[0];
+          weeklyProgress[i] = item.monthlyHistory[dateStr] === true;
+        }
+        
+        updatedItem.weeklyProgress = weeklyProgress;
+      }
+    }
+    
+    // Ensure updatedAt timestamp is set for proper merge resolution
+    const habitWithTimestamp: Habit = {
+      ...updatedItem,
+      updatedAt: new Date().toISOString(),
+      createdAt: updatedItem.createdAt || new Date().toISOString()
+    };
+    
+    setHabits(habits.map(h => h.id === habitWithTimestamp.id ? habitWithTimestamp : h));
     // Auto-sync to Firebase
     if (isAuthenticated()) {
-      syncEntityToFirebase('habits', item, item.id).catch(error => {
-        console.error('Error syncing habit to Firebase:', error);
-      });
+      syncEntityToFirebase('habits', habitWithTimestamp, habitWithTimestamp.id)
+        .then(result => {
+          if (!result.success) {
+            console.warn('⚠️ Habit sync failed:', result.error);
+          }
+        })
+        .catch(error => {
+          console.error('❌ Error syncing habit to Firebase:', error);
+        });
     }
   };
   const deleteHabit = (id: string) => {
@@ -1102,14 +1320,26 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       updateObjective(item);
       return;
     }
-    setObjectives([...objectives, item]);
+    const now = new Date().toISOString();
+    const objectiveWithTimestamp: Objective = {
+      ...item,
+      createdAt: item.createdAt || now,
+      updatedAt: now // Always set updatedAt for new items
+    };
+    setObjectives([...objectives, objectiveWithTimestamp]);
     // Auto-sync goal deadline to Google Calendar
-    syncService.queueSync('objective', 'create', item.id, item);
+    syncService.queueSync('objective', 'create', item.id, objectiveWithTimestamp);
     // Auto-sync to Firebase (async, fire and forget)
     if (isAuthenticated()) {
-      syncEntityToFirebase('objectives', item, item.id).catch(error => {
-        console.error('Error syncing objective to Firebase:', error);
-      });
+      syncEntityToFirebase('objectives', objectiveWithTimestamp, objectiveWithTimestamp.id)
+        .then(result => {
+          if (!result.success) {
+            console.warn('⚠️ Objective sync failed:', result.error);
+          }
+        })
+        .catch(error => {
+          console.error('❌ Error syncing objective to Firebase:', error);
+        });
     }
   };
   const updateObjective = (item: Objective) => {
@@ -2261,7 +2491,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       taskTemplates, objectiveTemplates, quickActions,
       deletedGoogleTaskIds, deletedTaskIds,
       updateUserProfile,
-      addTask, updateTask, deleteTask, deleteCompletedTasks,
+      addTask, updateTask, deleteTask, archiveTask, unarchiveTask, deleteCompletedTasks,
       addHabit, updateHabit, deleteHabit,
       addFriend, updateFriend, deleteFriend,
       addObjective, updateObjective, deleteObjective,
