@@ -191,7 +191,7 @@ export const FirebaseAuth: React.FC<FirebaseAuthProps> = ({ onBack, onAuthentica
   if (isAuthenticated) {
     const user = getCurrentUser();
     return (
-      <div className="min-h-screen bg-background pb-24">
+      <div className="min-h-screen bg-background pb-32 lg:pb-8">
         {onBack && (
           <TopNav 
             title="Cloud Sync" 

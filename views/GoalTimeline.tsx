@@ -168,7 +168,7 @@ export const GoalTimeline: React.FC<GoalTimelineProps> = ({
   const lifeArea = selectedLifeArea !== 'all' ? getLifeAreaById(selectedLifeArea) : null;
 
   return (
-    <div className="flex flex-col w-full h-full bg-background min-h-screen pb-24">
+    <div className="flex flex-col w-full h-full bg-background min-h-screen pb-32 lg:pb-8">
       <TopNav 
         title="Goal Timeline" 
         subtitle="Your long-term roadmap"

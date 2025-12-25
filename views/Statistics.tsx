@@ -605,7 +605,7 @@ export const Statistics: React.FC<StatisticsProps> = ({ onNavigate, onMenuClick,
   }, [selectedGraphMetric, stats, metrics, tasks, getTasksForDate]);
 
   return (
-    <div className="min-h-screen bg-background pb-24">
+    <div className="min-h-screen bg-background pb-32 lg:pb-8">
       <TopNav 
         title="Statistics" 
         onMenuClick={onMenuClick}

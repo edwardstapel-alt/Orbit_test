@@ -45,8 +45,8 @@ const getUserCollection = (collectionName: string): string => {
   return `users/${userId}/${collectionName}`;
 };
 
-// Sync a single entity to Firebase
-export const syncEntityToFirebase = async (
+// Direct sync function (used by rate limiter, no queueing)
+export const syncEntityToFirebaseDirect = async (
   collectionName: string,
   entity: any,
   entityId: string
@@ -58,38 +58,124 @@ export const syncEntityToFirebase = async (
       return { success: false, error: 'User not authenticated' };
     }
 
-    const docRef = doc(db, getUserCollection(collectionName), entityId);
+    // Special handling for profile collection (uses different path structure)
+    let docRef;
+    if (collectionName === 'profile') {
+      docRef = doc(db, `users/${userId}/profile`, entityId);
+    } else {
+      docRef = doc(db, getUserCollection(collectionName), entityId);
+    }
+
     const dataToSync = {
       ...entity,
       updatedAt: serverTimestamp(),
       syncedAt: serverTimestamp(),
-      userId // Store userId for security
+      userId // Store userId for security (except for profile)
     };
+    
+    // Don't add userId to profile
+    if (collectionName === 'profile') {
+      delete dataToSync.userId;
+    }
     
     // Ensure createdAt is set if not present
     if (!dataToSync.createdAt) {
       dataToSync.createdAt = new Date().toISOString();
     }
     
-    console.log(`📤 Syncing ${collectionName} to Firebase:`, {
-      id: entityId,
-      collection: getUserCollection(collectionName),
-      hasCreatedAt: !!dataToSync.createdAt,
-      title: collectionName === 'tasks' ? entity.title : 'N/A'
-    });
-    
     await setDoc(docRef, dataToSync, { merge: true });
     
-    console.log(`✅ Successfully synced ${collectionName} to Firebase:`, entityId);
     return { success: true };
   } catch (error: any) {
-    console.error(`❌ Error syncing ${collectionName} to Firebase:`, {
-      id: entityId,
-      error: error.message,
-      stack: error.stack
-    });
-    return { success: false, error: error.message };
+    // Check for quota errors
+    const isQuotaError = error.code === 'resource-exhausted' || 
+                        error.message?.includes('quota') ||
+                        error.message?.includes('Quota exceeded');
+    
+    if (isQuotaError) {
+      console.warn(`⚠️ Quota exceeded for ${collectionName}/${entityId}, will retry`);
+    } else {
+      console.error(`❌ Error syncing ${collectionName} to Firebase:`, {
+        id: entityId,
+        error: error.message,
+        code: error.code
+      });
+    }
+    
+    return { success: false, error: error.message || error.code || 'Unknown error' };
   }
+};
+
+// Sync a single entity to Firebase (with rate limiting, debouncing, and change detection)
+export const syncEntityToFirebase = async (
+  collectionName: string,
+  entity: any,
+  entityId: string,
+  options?: { immediate?: boolean; skipChangeCheck?: boolean }
+): Promise<{ success: boolean; error?: string }> => {
+  // Import utilities dynamically to avoid circular dependency
+  const { firebaseRateLimiter } = await import('./firebaseRateLimiter');
+  const { firebaseDebouncer } = await import('./firebaseDebouncer');
+  const { firebaseSyncChecker } = await import('./firebaseSyncChecker');
+  
+  // Check if sync is needed (unless explicitly skipped)
+  if (!options?.skipChangeCheck && !firebaseSyncChecker.shouldSync(collectionName, entityId, entity)) {
+    // Data unchanged, no need to sync
+    return { success: true };
+  }
+  
+  // If immediate sync requested, bypass debouncing
+  if (options?.immediate) {
+    const result = await firebaseRateLimiter.queueWrite(collectionName, entity, entityId);
+    if (result.success) {
+      firebaseSyncChecker.markSynced(collectionName, entityId, entity);
+    }
+    return result;
+  }
+  
+  // Use debouncing for normal syncs (except for critical operations)
+  // Critical collections that need immediate sync: deletedTaskIds, profile
+  const criticalCollections = ['deletedTaskIds', 'profile'];
+  if (criticalCollections.includes(collectionName)) {
+    const result = await firebaseRateLimiter.queueWrite(collectionName, entity, entityId);
+    if (result.success) {
+      firebaseSyncChecker.markSynced(collectionName, entityId, entity);
+    }
+    return result;
+  }
+  
+  // For other collections, use debouncing
+  // Return a promise that resolves when debounced sync completes
+  return new Promise((resolve) => {
+    let resolved = false;
+    
+    firebaseDebouncer.debounceSync(
+      collectionName,
+      entity,
+      entityId,
+      async (cn: string, e: any, eid: string) => {
+        try {
+          const result = await firebaseRateLimiter.queueWrite(cn, e, eid);
+          if (result.success) {
+            firebaseSyncChecker.markSynced(cn, eid, e);
+          }
+          if (!resolved) {
+            resolved = true;
+            resolve(result);
+          }
+        } catch (error: any) {
+          if (!resolved) {
+            resolved = true;
+            resolve({ success: false, error: error.message });
+          }
+        }
+      }
+    );
+    
+    // Resolve immediately for non-blocking behavior
+    // The actual sync happens in the background via debouncer
+    resolve({ success: true });
+  });
 };
 
 // Sync multiple entities to Firebase (batch write)
@@ -103,27 +189,57 @@ export const syncEntitiesToFirebase = async (
       return { success: false, synced: 0, errors: 0, error: 'User not authenticated' };
     }
 
-    const batch = writeBatch(db);
+    // Firestore batch limit is 500 operations
+    const BATCH_LIMIT = 500;
     let synced = 0;
     let errors = 0;
+    const allErrors: string[] = [];
 
-    entities.forEach(entity => {
+    // Process in batches of 500
+    for (let i = 0; i < entities.length; i += BATCH_LIMIT) {
+      const batch = writeBatch(db);
+      const batchEntities = entities.slice(i, i + BATCH_LIMIT);
+      
+      batchEntities.forEach(entity => {
+        try {
+          const docRef = doc(db, getUserCollection(collectionName), entity.id);
+          batch.set(docRef, {
+            ...entity,
+            updatedAt: serverTimestamp(),
+            syncedAt: serverTimestamp(),
+            userId
+          }, { merge: true });
+          synced++;
+        } catch (error: any) {
+          console.error(`Error adding ${entity.id} to batch:`, error);
+          errors++;
+          allErrors.push(error.message || 'Unknown error');
+        }
+      });
+
       try {
-        const docRef = doc(db, getUserCollection(collectionName), entity.id);
-        batch.set(docRef, {
-          ...entity,
-          updatedAt: serverTimestamp(),
-          syncedAt: serverTimestamp(),
-          userId
-        }, { merge: true });
-        synced++;
-      } catch (error) {
-        console.error(`Error adding ${entity.id} to batch:`, error);
-        errors++;
+        await batch.commit();
+        
+        // Small delay between batches to avoid rate limiting
+        if (i + BATCH_LIMIT < entities.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      } catch (error: any) {
+        // Check for quota errors
+        if (error.code === 'resource-exhausted' || error.message?.includes('quota')) {
+          console.warn(`⚠️ Quota exceeded during batch sync of ${collectionName}, partial sync completed`);
+          // Return partial success
+          return { 
+            success: false, 
+            synced, 
+            errors: errors + (batchEntities.length - synced), 
+            error: 'Quota exceeded - partial sync completed' 
+          };
+        }
+        throw error;
       }
-    });
+    }
 
-    await batch.commit();
     return { success: true, synced, errors };
   } catch (error: any) {
     console.error(`Error syncing ${collectionName} batch to Firebase:`, error);
@@ -175,7 +291,7 @@ export const syncEntitiesFromFirebase = async (
   }
 };
 
-// Watch for real-time changes in Firebase
+// Watch for real-time changes in Firebase (optimized)
 export const watchFirebaseChanges = (
   collectionName: string,
   callback: (data: any[]) => void
@@ -189,42 +305,62 @@ export const watchFirebaseChanges = (
   try {
     const collectionRef = collection(db, getUserCollection(collectionName));
     console.log(`👂 Setting up Firebase listener for ${collectionName}, collection path: ${getUserCollection(collectionName)}`);
-    const unsubscribe = onSnapshot(collectionRef, (snapshot) => {
-      console.log(`📡 Firebase snapshot received for ${collectionName}:`, {
-        docCount: snapshot.docs.length,
-        hasPendingWrites: snapshot.metadata.hasPendingWrites,
-        fromCache: snapshot.metadata.fromCache
-      });
-      const data = snapshot.docs
-        .map(doc => {
-          const docData = doc.data();
-          // Skip deleted items
-          if (docData.deleted === true) {
-            console.log(`⏭️ Skipping deleted ${collectionName}:`, doc.id);
-            return null;
-          }
-          // Convert Firestore Timestamps to ISO strings
-          const processed: any = { ...docData };
-          if (processed.updatedAt && processed.updatedAt.toDate) {
-            processed.updatedAt = processed.updatedAt.toDate().toISOString();
-          }
-          if (processed.syncedAt && processed.syncedAt.toDate) {
-            processed.syncedAt = processed.syncedAt.toDate().toISOString();
-          }
-          if (processed.createdAt && processed.createdAt.toDate) {
-            processed.createdAt = processed.createdAt.toDate().toISOString();
-          }
+    
+    const unsubscribe = onSnapshot(
+      collectionRef,
+      { includeMetadataChanges: false }, // Don't trigger on metadata-only changes
+      async (snapshot) => {
+        // Import listener optimizer dynamically
+        const { firebaseListenerOptimizer } = await import('./firebaseListenerOptimizer');
+        // Check for quota errors in metadata
+        if (snapshot.metadata.fromCache && snapshot.metadata.hasPendingWrites === false) {
+          // This might indicate we're using cached data due to quota issues
+          console.warn(`⚠️ Using cached data for ${collectionName} - may indicate quota issues`);
+        }
+        
+        const data = snapshot.docs
+          .map(doc => {
+            const docData = doc.data();
+            // Skip deleted items
+            if (docData.deleted === true) {
+              return null;
+            }
+            // Convert Firestore Timestamps to ISO strings
+            const processed: any = { ...docData };
+            if (processed.updatedAt && processed.updatedAt.toDate) {
+              processed.updatedAt = processed.updatedAt.toDate().toISOString();
+            }
+            if (processed.syncedAt && processed.syncedAt.toDate) {
+              processed.syncedAt = processed.syncedAt.toDate().toISOString();
+            }
+            if (processed.createdAt && processed.createdAt.toDate) {
+              processed.createdAt = processed.createdAt.toDate().toISOString();
+            }
           return processed;
         })
         .filter(item => item !== null); // Remove null items (deleted)
-      console.log(`📦 Processed ${collectionName} data:`, {
-        count: data.length,
-        ids: collectionName === 'tasks' ? data.map((d: any) => d.id) : 'N/A'
-      });
-      callback(data);
-    }, (error) => {
-      console.error(`❌ Error watching ${collectionName}:`, error);
-    });
+        
+        // Use throttled callback to reduce quota usage
+        firebaseListenerOptimizer.throttleCallback(collectionName, callback, data);
+        
+        // Reduced logging
+        if (process.env.NODE_ENV === 'development' && collectionName === 'tasks') {
+          console.log(`📦 Processed ${collectionName} data:`, {
+            count: data.length,
+            ids: data.map((d: any) => d.id)
+          });
+        }
+      },
+      (error) => {
+        // Handle quota errors specifically
+        if (error.code === 'resource-exhausted' || error.message?.includes('quota')) {
+          console.error(`❌ Quota exceeded while watching ${collectionName}:`, error);
+          // Don't throw, just log - the listener will retry automatically with backoff
+        } else {
+          console.error(`❌ Error watching ${collectionName}:`, error);
+        }
+      }
+    );
 
     return unsubscribe;
   } catch (error: any) {
@@ -315,6 +451,36 @@ export const syncAllFromFirebase = async (): Promise<{
   error?: string;
 }> => {
   try {
+    const userId = getUserId();
+    
+    // CRITICAL: Get deletedTaskIds FIRST before syncing tasks
+    let deletedTaskIds: string[] = [];
+    if (userId) {
+      try {
+        const deletedRef = doc(db, `users/${userId}/deletedTaskIds`, 'user');
+        const deletedSnap = await getDoc(deletedRef);
+        if (deletedSnap.exists()) {
+          const deletedData = deletedSnap.data();
+          // Support both old format (ids array) and new format (entries array)
+          const entries = deletedData.entries || [];
+          const ids = deletedData.ids || [];
+          
+          // Convert to array of IDs
+          if (entries.length > 0) {
+            deletedTaskIds = entries.map((e: any) => e.id || e);
+          } else if (ids.length > 0) {
+            deletedTaskIds = ids;
+          }
+          
+          if (deletedTaskIds.length > 0) {
+            console.log(`✅ Loaded ${deletedTaskIds.length} deleted task IDs before sync`);
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error getting deletedTaskIds:', error);
+      }
+    }
+
     const collections = [
       'tasks',
       'habits',
@@ -334,14 +500,20 @@ export const syncAllFromFirebase = async (): Promise<{
     for (const collectionName of collections) {
       const result = await syncEntitiesFromFirebase(collectionName);
       if (result.success) {
-        data[collectionName] = result.data;
+        // CRITICAL: Filter out deleted tasks BEFORE adding to data
+        if (collectionName === 'tasks' && deletedTaskIds.length > 0) {
+          const filteredTasks = result.data.filter((task: Task) => !deletedTaskIds.includes(task.id));
+          console.log(`🔒 Filtered ${result.data.length - filteredTasks.length} deleted tasks from sync`);
+          data[collectionName] = filteredTasks;
+        } else {
+          data[collectionName] = result.data;
+        }
       } else {
         data[collectionName] = [];
       }
     }
 
     // Get user profile
-    const userId = getUserId();
     if (userId) {
       try {
         const profileRef = doc(db, `users/${userId}/profile`, 'data');
@@ -357,29 +529,23 @@ export const syncAllFromFirebase = async (): Promise<{
         data.userProfile = null;
       }
 
-      // Get deletedTaskIds
-      try {
-        const deletedRef = doc(db, `users/${userId}/deletedTaskIds`, 'user');
-        const deletedSnap = await getDoc(deletedRef);
-        if (deletedSnap.exists()) {
-          const deletedData = deletedSnap.data();
-          // Support both old format (ids array) and new format (entries array)
-          data.deletedTaskIds = deletedData;
-          const count = deletedData.entries?.length || deletedData.ids?.length || 0;
-          if (count > 0) {
-            console.log(`✅ Synced ${count} deleted task IDs`);
-          }
-        } else {
-          data.deletedTaskIds = { ids: [], entries: [] };
+      // Store deletedTaskIds in return data (already loaded above)
+      const deletedRef = doc(db, `users/${userId}/deletedTaskIds`, 'user');
+      const deletedSnap = await getDoc(deletedRef);
+      if (deletedSnap.exists()) {
+        const deletedData = deletedSnap.data();
+        data.deletedTaskIds = deletedData;
+        const count = deletedData.entries?.length || deletedData.ids?.length || 0;
+        if (count > 0) {
+          console.log(`✅ Synced ${count} deleted task IDs`);
         }
-      } catch (error) {
-        console.error('❌ Error getting deletedTaskIds:', error);
+      } else {
         data.deletedTaskIds = { ids: [], entries: [] };
       }
     } else {
       console.warn('⚠️ Cannot get profile: User not authenticated');
       data.userProfile = null;
-      data.deletedTaskIds = { ids: [] };
+      data.deletedTaskIds = { ids: [], entries: [] };
     }
 
     const totalItems = Object.values(data).reduce((sum: number, arr: any) => {

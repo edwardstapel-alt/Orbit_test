@@ -44,7 +44,7 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({ onBack, onNavi
   const toggleDarkMode = () => setDarkMode(!darkMode);
 
   return (
-    <div className="flex flex-col w-full h-full bg-background min-h-screen pb-24 overflow-y-auto">
+    <div className="flex flex-col w-full h-full bg-background min-h-screen pb-32 lg:pb-8 overflow-y-auto">
       <header className="sticky top-0 z-20 bg-background/95 backdrop-blur-md px-6 py-4 flex items-center gap-4 border-b border-slate-200/50">
         <button onClick={onBack} className="size-10 -ml-2 flex items-center justify-center rounded-full hover:bg-slate-200 transition-colors text-text-main">
             <span className="material-symbols-outlined">arrow_back</span>
@@ -65,27 +65,20 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({ onBack, onNavi
               </div>
               <span className="material-symbols-outlined text-text-tertiary">chevron_right</span>
             </button>
-            <button onClick={() => onNavigate(View.FIREBASE_AUTH)} className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors border-b border-gray-100">
+            <button onClick={() => onNavigate(View.SYNCED_ACCOUNTS)} className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors">
               <div className="flex items-center gap-3">
                 <span className="material-symbols-outlined text-text-secondary">cloud_sync</span>
                 <div className="flex flex-col">
-                  <span className="text-text-main font-medium">Cloud Sync</span>
+                  <span className="text-text-main font-medium">Google Account</span>
                   {isFirebaseLoggedIn ? (
                     <span className="text-xs text-green-600 flex items-center gap-1">
                       <span className="material-symbols-outlined text-xs">check_circle</span>
-                      Syncing
+                      Connected
                     </span>
                   ) : (
                     <span className="text-xs text-gray-400">Not connected</span>
                   )}
                 </div>
-              </div>
-              <span className="material-symbols-outlined text-text-tertiary">chevron_right</span>
-            </button>
-            <button onClick={() => onNavigate(View.SYNCED_ACCOUNTS)} className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors">
-              <div className="flex items-center gap-3">
-                <span className="material-symbols-outlined text-text-secondary">sync_alt</span>
-                <span className="text-text-main font-medium">Synced Accounts</span>
               </div>
               <span className="material-symbols-outlined text-text-tertiary">chevron_right</span>
             </button>

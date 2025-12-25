@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
 import { View } from '../types';
 import { TopNav } from '../components/TopNav';
+import { useSelection } from '../context/SelectionContext';
+import { useLongPress } from '../hooks/useLongPress';
+import { MultiSelectToolbar } from '../components/MultiSelectToolbar';
 
 interface LifeAreaDetailProps {
   lifeAreaId: string;
@@ -32,8 +35,104 @@ export const LifeAreaDetail: React.FC<LifeAreaDetailProps> = ({
     updateObjective,
     updateHabit,
     updateTask,
-    updateKeyResult
+    updateKeyResult,
+    deleteObjective,
+    deleteTask,
+    deleteHabit
   } = useData();
+  
+  const {
+    isSelectMode,
+    enterSelectMode,
+    exitSelectMode,
+    toggleSelection,
+    isSelected,
+    getSelectedCount,
+    getSelectedIds,
+    clearSelection
+  } = useSelection();
+
+  const isObjectiveSelectMode = isSelectMode.get('objective') || false;
+  const isTaskSelectMode = isSelectMode.get('task') || false;
+  const isHabitSelectMode = isSelectMode.get('habit') || false;
+
+  const handleObjectivesDelete = (objectiveIds: string[]) => {
+    objectiveIds.forEach(id => deleteObjective(id));
+    clearSelection('objective');
+    exitSelectMode('objective');
+  };
+
+  const handleTasksDelete = (taskIds: string[]) => {
+    taskIds.forEach(id => deleteTask(id));
+    clearSelection('task');
+    exitSelectMode('task');
+  };
+
+  const handleHabitsDelete = (habitIds: string[]) => {
+    habitIds.forEach(id => deleteHabit(id));
+    clearSelection('habit');
+    exitSelectMode('habit');
+  };
+
+  const handleObjectiveClick = (objectiveId: string) => {
+    if (isObjectiveSelectMode) {
+      toggleSelection('objective', objectiveId);
+    } else {
+      onViewObjective && onViewObjective(objectiveId);
+    }
+  };
+
+  const handleObjectiveLongPress = (objectiveId: string) => {
+    if (!isObjectiveSelectMode) {
+      enterSelectMode('objective');
+      toggleSelection('objective', objectiveId);
+    }
+  };
+
+  const handleObjectiveEdit = (objectiveId: string) => {
+    exitSelectMode('objective');
+    onEdit && onEdit('objective', objectiveId);
+  };
+
+  const handleTaskClick = (taskId: string) => {
+    if (isTaskSelectMode) {
+      toggleSelection('task', taskId);
+    } else {
+      onEdit && onEdit('task', taskId);
+    }
+  };
+
+  const handleTaskLongPress = (taskId: string) => {
+    if (!isTaskSelectMode) {
+      enterSelectMode('task');
+      toggleSelection('task', taskId);
+    }
+  };
+
+  const handleTaskEdit = (taskId: string) => {
+    exitSelectMode('task');
+    onEdit && onEdit('task', taskId);
+  };
+
+  const handleHabitClick = (habitId: string) => {
+    if (isHabitSelectMode) {
+      toggleSelection('habit', habitId);
+    } else {
+      onEdit && onEdit('habit', habitId);
+    }
+  };
+
+  const handleHabitLongPress = (habitId: string) => {
+    if (!isHabitSelectMode) {
+      enterSelectMode('habit');
+      toggleSelection('habit', habitId);
+    }
+  };
+
+  const handleHabitEdit = (habitId: string) => {
+    exitSelectMode('habit');
+    onEdit && onEdit('habit', habitId);
+  };
   
   const [activeModal, setActiveModal] = useState<'addGoal' | 'linkHabit' | 'addTask' | null>(null);
   
@@ -208,7 +307,7 @@ export const LifeAreaDetail: React.FC<LifeAreaDetailProps> = ({
         showBack={true}
       />
 
-      <main className="flex-1 overflow-y-auto no-scrollbar pb-32 px-6 pt-6">
+      <main className="flex-1 overflow-y-auto no-scrollbar pb-32 lg:pb-8 px-6 pt-6">
         {/* Life Area Header */}
         <div className="mb-6">
           <div className="flex items-center gap-4 mb-4 group">
@@ -323,32 +422,57 @@ export const LifeAreaDetail: React.FC<LifeAreaDetailProps> = ({
                 const calculatedProgress = linkedKRs.length > 0 
                   ? Math.round(linkedKRs.reduce((acc, kr) => acc + (kr.current / kr.target) * 100, 0) / linkedKRs.length)
                   : obj.progress;
+                const objIsSelected = isSelected('objective', obj.id);
+
+                const objLongPressHandlers = useLongPress({
+                  onLongPress: () => handleObjectiveLongPress(obj.id),
+                  onClick: () => handleObjectiveClick(obj.id),
+                });
 
                 return (
                   <div
                     key={obj.id}
-                    onClick={() => onViewObjective && onViewObjective(obj.id)}
-                    className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 hover:shadow-soft transition-all cursor-pointer group"
+                    {...objLongPressHandlers}
+                    className={`bg-white rounded-2xl p-5 shadow-sm border-2 hover:shadow-soft transition-all cursor-pointer group ${
+                      objIsSelected 
+                        ? 'border-primary bg-primary/5' 
+                        : 'border-slate-100'
+                    }`}
                   >
                     <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1">
-                        {showCategory && (
-                          <div className="flex items-center gap-2 mb-1">
-                            <div className={`size-2 rounded-full ${getStatusBadge(obj.status)}`}></div>
-                            <span className="text-xs font-bold text-text-tertiary uppercase tracking-wider">{obj.category}</span>
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        {isObjectiveSelectMode && (
+                          <div className="shrink-0">
+                            <div className={`size-6 rounded-lg border-2 flex items-center justify-center transition-all ${
+                              objIsSelected 
+                                ? 'bg-primary border-primary' 
+                                : 'border-gray-300 bg-white'
+                            }`}>
+                              {objIsSelected && (
+                                <span className="material-symbols-outlined text-white text-sm">check</span>
+                              )}
+                            </div>
                           </div>
                         )}
-                        {!showCategory && (
-                          <div className="flex items-center gap-2 mb-1">
-                            <div className={`size-2 rounded-full ${getStatusBadge(obj.status)}`}></div>
-                          </div>
-                        )}
-                        <h3 className="text-base font-bold text-text-main group-hover:text-primary transition-colors mb-1">
-                          {obj.title}
-                        </h3>
-                        {obj.description && (
-                          <p className="text-sm text-text-secondary line-clamp-2">{obj.description}</p>
-                        )}
+                        <div className="flex-1 min-w-0">
+                          {showCategory && (
+                            <div className="flex items-center gap-2 mb-1">
+                              <div className={`size-2 rounded-full ${getStatusBadge(obj.status)}`}></div>
+                              <span className="text-xs font-bold text-text-tertiary uppercase tracking-wider">{obj.category}</span>
+                            </div>
+                          )}
+                          {!showCategory && (
+                            <div className="flex items-center gap-2 mb-1">
+                              <div className={`size-2 rounded-full ${getStatusBadge(obj.status)}`}></div>
+                            </div>
+                          )}
+                          <h3 className="text-base font-bold text-text-main group-hover:text-primary transition-colors mb-1">
+                            {obj.title}
+                          </h3>
+                          {obj.description && (
+                            <p className="text-sm text-text-secondary line-clamp-2">{obj.description}</p>
+                          )}
+                        </div>
                       </div>
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${getStatusColor(obj.status)}`}>
                         {obj.status}
@@ -413,23 +537,53 @@ export const LifeAreaDetail: React.FC<LifeAreaDetailProps> = ({
             </button>
           ) : (
             <div className="space-y-2">
-              {areaTasks.map(task => (
+              {areaTasks.map(task => {
+                const taskIsSelected = isSelected('task', task.id);
+
+                const taskLongPressHandlers = useLongPress({
+                  onLongPress: () => handleTaskLongPress(task.id),
+                  onClick: () => handleTaskClick(task.id),
+                });
+
+                return (
                 <div
                   key={task.id}
-                  className="bg-white rounded-xl p-4 shadow-sm border border-slate-100 flex items-center gap-3"
+                  {...taskLongPressHandlers}
+                  className={`bg-white rounded-xl p-4 shadow-sm border-2 flex items-center gap-3 cursor-pointer transition-all ${
+                    taskIsSelected 
+                      ? 'border-primary bg-primary/5' 
+                      : 'border-slate-100'
+                  }`}
                 >
-                  <button
-                    onClick={() => {/* TODO: Toggle task completion */}}
-                    className={`size-5 rounded border-2 flex items-center justify-center transition-colors ${
-                      task.completed 
-                        ? 'bg-primary border-primary' 
-                        : 'border-gray-300 hover:border-primary'
-                    }`}
-                  >
-                    {task.completed && (
-                      <span className="material-symbols-outlined text-white text-sm">check</span>
-                    )}
-                  </button>
+                  {isTaskSelectMode ? (
+                    <div className="shrink-0">
+                      <div className={`size-5 rounded border-2 flex items-center justify-center transition-all ${
+                        taskIsSelected 
+                          ? 'bg-primary border-primary' 
+                          : 'border-gray-300 bg-white'
+                      }`}>
+                        {taskIsSelected && (
+                          <span className="material-symbols-outlined text-white text-xs">check</span>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        updateTask({ ...task, completed: !task.completed });
+                      }}
+                      className={`size-5 rounded border-2 flex items-center justify-center transition-colors ${
+                        task.completed 
+                          ? 'bg-primary border-primary' 
+                          : 'border-gray-300 hover:border-primary'
+                      }`}
+                    >
+                      {task.completed && (
+                        <span className="material-symbols-outlined text-white text-sm">check</span>
+                      )}
+                    </button>
+                  )}
                   <div className="flex-1 min-w-0">
                     <p className={`text-sm font-medium ${task.completed ? 'line-through text-text-tertiary' : 'text-text-main'}`}>
                       {task.title}
@@ -442,7 +596,8 @@ export const LifeAreaDetail: React.FC<LifeAreaDetailProps> = ({
                     <span className="material-symbols-outlined text-red-500 text-lg">priority_high</span>
                   )}
                 </div>
-              ))}
+              );
+              })}
             </div>
           )}
         </section>
@@ -477,23 +632,47 @@ export const LifeAreaDetail: React.FC<LifeAreaDetailProps> = ({
               {areaHabits.map(habit => {
                 const weeklyData = habit.weeklyProgress || [false, false, false, false, false, false, false];
                 const completedCount = weeklyData.filter(Boolean).length;
+                const habitIsSelected = isSelected('habit', habit.id);
+
+                const habitLongPressHandlers = useLongPress({
+                  onLongPress: () => handleHabitLongPress(habit.id),
+                  onClick: () => handleHabitClick(habit.id),
+                });
+
                 return (
                 <div
                   key={habit.id}
-                    onClick={() => onEdit && onEdit('habit', habit.id)}
-                    className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex flex-col gap-3 cursor-pointer hover:shadow-md hover:border-primary/20 transition-all active:scale-[0.99]"
+                  {...habitLongPressHandlers}
+                  className={`bg-white rounded-2xl p-4 shadow-sm border-2 flex flex-col gap-3 cursor-pointer hover:shadow-md transition-all active:scale-[0.99] ${
+                    habitIsSelected 
+                      ? 'border-primary bg-primary/5' 
+                      : 'border-slate-100 hover:border-primary/20'
+                  }`}
                 >
                     <div className="flex items-center gap-3">
-                  <div 
+                      {isHabitSelectMode && (
+                        <div className="shrink-0">
+                          <div className={`size-6 rounded-lg border-2 flex items-center justify-center transition-all ${
+                            habitIsSelected 
+                              ? 'bg-primary border-primary' 
+                              : 'border-gray-300 bg-white'
+                          }`}>
+                            {habitIsSelected && (
+                              <span className="material-symbols-outlined text-white text-sm">check</span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      <div 
                         className="size-12 rounded-xl flex items-center justify-center shrink-0"
-                    style={{ backgroundColor: `${lifeArea.color}20` }}
-                  >
-                    <span 
-                      className="material-symbols-outlined text-xl"
-                      style={{ color: lifeArea.color }}
-                    >
-                      {habit.icon}
-                    </span>
+                        style={{ backgroundColor: `${lifeArea.color}20` }}
+                      >
+                        <span 
+                          className="material-symbols-outlined text-xl"
+                          style={{ color: lifeArea.color }}
+                        >
+                          {habit.icon}
+                        </span>
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-bold text-text-main truncate">{habit.name}</p>
@@ -504,7 +683,9 @@ export const LifeAreaDetail: React.FC<LifeAreaDetailProps> = ({
                           <span className="text-[10px] text-text-tertiary">{completedCount}/7 this week</span>
                         </div>
                       </div>
-                      <span className="material-symbols-outlined text-text-tertiary text-[18px]">chevron_right</span>
+                      {!isHabitSelectMode && (
+                        <span className="material-symbols-outlined text-text-tertiary text-[18px]">chevron_right</span>
+                      )}
                     </div>
                     
                     {/* Weekly Progress */}
@@ -819,6 +1000,49 @@ export const LifeAreaDetail: React.FC<LifeAreaDetailProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Multi-Select Toolbars */}
+      {isObjectiveSelectMode && (
+        <MultiSelectToolbar
+          entityType="objective"
+          onDelete={handleObjectivesDelete}
+          onEdit={getSelectedCount('objective') === 1 ? () => handleObjectiveEdit(getSelectedIds('objective')[0]) : undefined}
+          onCancel={() => {
+            exitSelectMode('objective');
+            clearSelection('objective');
+          }}
+          entityName="Objective"
+          entityNamePlural="Objectives"
+        />
+      )}
+
+      {isTaskSelectMode && (
+        <MultiSelectToolbar
+          entityType="task"
+          onDelete={handleTasksDelete}
+          onEdit={getSelectedCount('task') === 1 ? () => handleTaskEdit(getSelectedIds('task')[0]) : undefined}
+          onCancel={() => {
+            exitSelectMode('task');
+            clearSelection('task');
+          }}
+          entityName="Task"
+          entityNamePlural="Tasks"
+        />
+      )}
+
+      {isHabitSelectMode && (
+        <MultiSelectToolbar
+          entityType="habit"
+          onDelete={handleHabitsDelete}
+          onEdit={getSelectedCount('habit') === 1 ? () => handleHabitEdit(getSelectedIds('habit')[0]) : undefined}
+          onCancel={() => {
+            exitSelectMode('habit');
+            clearSelection('habit');
+          }}
+          entityName="Habit"
+          entityNamePlural="Habits"
+        />
       )}
     </div>
   );

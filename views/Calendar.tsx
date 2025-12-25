@@ -186,7 +186,7 @@ export const Calendar: React.FC<CalendarProps> = ({ onEdit, onNavigate, onMenuCl
         onProfileClick={onProfileClick} 
       />
 
-      <main className="flex-1 overflow-y-auto no-scrollbar pb-32 px-6 pt-6">
+      <main className="flex-1 overflow-y-auto no-scrollbar pb-32 lg:pb-8 px-6 pt-6">
         {/* View Mode Toggle */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2 bg-white rounded-xl p-1 shadow-sm border border-slate-100">

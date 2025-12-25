@@ -89,7 +89,7 @@ export const GoalPlanPreview: React.FC<GoalPlanPreviewProps> = ({ template, onBa
         <div className="w-10" /> {/* Spacer for centering */}
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-6 pb-32">
+      <div className="flex-1 overflow-y-auto px-6 py-6 pb-32 lg:pb-8">
         {/* Goal Header */}
         <div className="mb-6">
           <div className="flex items-center gap-4 mb-4">

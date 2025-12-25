@@ -122,7 +122,7 @@ export const HabitDetail: React.FC<HabitDetailProps> = ({
   };
 
   return (
-    <div className="flex flex-col w-full h-full overflow-y-auto pb-32">
+    <div className="flex flex-col w-full h-full overflow-y-auto pb-32 lg:pb-8">
       <TopNav 
         title={habit.name}
         subtitle={`🔥 ${habit.streak} day streak`}

@@ -4,6 +4,10 @@ import { EntityType, View, Task, Habit, TimeSlot } from '../types';
 import { TopNav } from '../components/TopNav';
 import { EntityFilter, FilterState } from '../components/EntityFilter';
 import { recordHabitCompletion, recordHabitMiss } from '../utils/habitHistory';
+import { useSelection } from '../context/SelectionContext';
+import { useLongPress } from '../hooks/useLongPress';
+import { SwipeableTask } from '../components/SwipeableTask';
+import { MultiSelectToolbar } from '../components/MultiSelectToolbar';
 
 interface TodayProps {
   onEdit: (type: EntityType, id?: string, parentId?: string, context?: { objectiveId?: string; lifeAreaId?: string }) => void;
@@ -25,15 +29,53 @@ export const Today: React.FC<TodayProps> = ({ onEdit, onNavigate, onMenuClick, o
     updateTask, 
     updateHabit,
     updateKeyResult,
+    deleteTask,
+    archiveTask,
+    deleteHabit,
     getTimeSlotsForDate,
     userProfile,
     reviews,
     getLatestReview
   } = useData();
 
+  const {
+    isSelectMode,
+    enterSelectMode,
+    exitSelectMode,
+    toggleSelection,
+    isSelected,
+    getSelectedCount,
+    getSelectedIds,
+    clearSelection
+  } = useSelection();
+
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [activeModal, setActiveModal] = useState<{ type: 'addTask', dayPartId?: string } | null>(null);
   const [filters, setFilters] = useState<FilterState>({});
+  
+  const isTaskSelectMode = isSelectMode.get('task') || false;
+  const isHabitSelectMode = isSelectMode.get('habit') || false;
+
+  // Handle task actions
+  const handleTaskDelete = (taskId: string) => {
+    deleteTask(taskId);
+  };
+
+  const handleTaskArchive = (taskId: string) => {
+    archiveTask(taskId);
+  };
+
+  const handleTasksDelete = (taskIds: string[]) => {
+    taskIds.forEach(id => deleteTask(id));
+    clearSelection('task');
+    exitSelectMode('task');
+  };
+
+  const handleHabitsDelete = (habitIds: string[]) => {
+    habitIds.forEach(id => deleteHabit(id));
+    clearSelection('habit');
+    exitSelectMode('habit');
+  };
 
   // Format date as YYYY-MM-DD
   const todayString = useMemo(() => {
@@ -400,31 +442,58 @@ export const Today: React.FC<TodayProps> = ({ onEdit, onNavigate, onMenuClick, o
                   : false;
                 const isFuture = isFutureDate(selectedDate);
                 
+                const habitSelected = isSelected('habit', habit.id);
+                const longPressHandlers = useLongPress({
+                  onLongPress: () => {
+                    if (!isHabitSelectMode) {
+                      enterSelectMode('habit');
+                    }
+                    toggleSelection('habit', habit.id);
+                  },
+                  onClick: () => {
+                    if (isHabitSelectMode) {
+                      toggleSelection('habit', habit.id);
+                    } else {
+                      onEdit('habit', habit.id);
+                    }
+                  }
+                });
+
                 return (
                   <div
                     key={habit.id}
-                    className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex items-center gap-3 cursor-pointer hover:shadow-md hover:border-primary/20 transition-all"
-                    onClick={() => onEdit('habit', habit.id)}
+                    className={`bg-white rounded-2xl p-4 shadow-sm border-2 flex items-center gap-3 cursor-pointer hover:shadow-md transition-all ${
+                      habitSelected 
+                        ? 'border-primary bg-primary/5' 
+                        : 'border-slate-100 hover:border-primary/20'
+                    }`}
+                    {...longPressHandlers}
                   >
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (!isFuture) {
+                        if (isHabitSelectMode) {
+                          toggleSelection('habit', habit.id);
+                        } else if (!isFuture) {
                           toggleHabit(habit.id);
                         }
                       }}
                       disabled={isFuture}
                       className={`size-8 rounded-xl flex items-center justify-center transition-colors shrink-0 ${
-                        isFuture 
-                          ? 'bg-gray-100 text-gray-300 cursor-not-allowed opacity-50' 
-                          : isCompleted 
-                            ? 'bg-primary text-white' 
-                            : 'bg-gray-100 text-text-tertiary hover:bg-gray-200'
+                        habitSelected
+                          ? 'bg-primary text-white border-2 border-primary'
+                          : isFuture 
+                            ? 'bg-gray-100 text-gray-300 cursor-not-allowed opacity-50' 
+                            : isCompleted 
+                              ? 'bg-primary text-white' 
+                              : 'bg-gray-100 text-text-tertiary hover:bg-gray-200'
                       }`}
                     >
-                      {isCompleted && (
+                      {habitSelected ? (
                         <span className="material-symbols-outlined text-lg">check</span>
-                      )}
+                      ) : isCompleted ? (
+                        <span className="material-symbols-outlined text-lg">check</span>
+                      ) : null}
                     </button>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-text-main">{habit.name}</p>
@@ -573,25 +642,56 @@ export const Today: React.FC<TodayProps> = ({ onEdit, onNavigate, onMenuClick, o
                   {partTasks.map(task => {
                     const linkedObjective = task.objectiveId ? objectives.find(o => o.id === task.objectiveId) : null;
                     const linkedLifeArea = task.lifeAreaId ? lifeAreas.find(la => la.id === task.lifeAreaId) : null;
+                    const taskSelected = isSelected('task', task.id);
                     
-                    return (
+                    const longPressHandlers = useLongPress({
+                      onLongPress: () => {
+                        if (!isTaskSelectMode) {
+                          enterSelectMode('task');
+                        }
+                        toggleSelection('task', task.id);
+                      },
+                      onClick: () => {
+                        if (isTaskSelectMode) {
+                          toggleSelection('task', task.id);
+                        }
+                      }
+                    });
+
+                    const taskContent = (
                       <div
-                        key={task.id}
-                        className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex items-start gap-3 cursor-pointer hover:shadow-md hover:border-primary/20 transition-all group"
-                        onClick={() => onEdit('task', task.id)}
+                        className={`bg-white rounded-2xl p-4 shadow-sm border-2 flex items-start gap-3 cursor-pointer hover:shadow-md transition-all group ${
+                          taskSelected 
+                            ? 'border-primary bg-primary/5' 
+                            : 'border-slate-100 hover:border-primary/20'
+                        }`}
+                        {...(isTaskSelectMode ? longPressHandlers : {})}
+                        onClick={() => {
+                          if (isTaskSelectMode) {
+                            toggleSelection('task', task.id);
+                          } else {
+                            onEdit('task', task.id);
+                          }
+                        }}
                       >
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            toggleTask(task.id);
+                            if (isTaskSelectMode) {
+                              toggleSelection('task', task.id);
+                            } else {
+                              toggleTask(task.id);
+                            }
                           }}
                           className={`size-6 rounded-lg flex items-center justify-center transition-colors shrink-0 mt-0.5 ${
-                            task.completed 
-                              ? 'bg-primary text-white' 
-                              : 'bg-gray-100 text-text-tertiary hover:bg-gray-200'
+                            taskSelected
+                              ? 'bg-primary text-white border-2 border-primary'
+                              : task.completed 
+                                ? 'bg-primary text-white' 
+                                : 'bg-gray-100 text-text-tertiary hover:bg-gray-200'
                           }`}
                         >
-                          {task.completed && (
+                          {(taskSelected || task.completed) && (
                             <span className="material-symbols-outlined text-sm">check</span>
                           )}
                         </button>
@@ -646,6 +746,24 @@ export const Today: React.FC<TodayProps> = ({ onEdit, onNavigate, onMenuClick, o
                         )}
                       </div>
                     );
+
+                    // Wrap in SwipeableTask if not in select mode
+                    if (isTaskSelectMode) {
+                      return <React.Fragment key={task.id}>{taskContent}</React.Fragment>;
+                    }
+
+                    return (
+                      <SwipeableTask
+                        key={task.id}
+                        task={task}
+                        onDelete={() => handleTaskDelete(task.id)}
+                        onArchive={() => handleTaskArchive(task.id)}
+                        onToggle={() => toggleTask(task.id)}
+                        onEdit={() => onEdit('task', task.id)}
+                      >
+                        {taskContent}
+                      </SwipeableTask>
+                    );
                   })}
                 </div>
               )}
@@ -655,6 +773,41 @@ export const Today: React.FC<TodayProps> = ({ onEdit, onNavigate, onMenuClick, o
         </div>
 
       </main>
+
+      {/* Multi-Select Toolbars */}
+      {isTaskSelectMode && (
+        <MultiSelectToolbar
+          entityType="task"
+          onDelete={handleTasksDelete}
+          onEdit={(id) => {
+            exitSelectMode('task');
+            onEdit('task', id);
+          }}
+          onCancel={() => {
+            exitSelectMode('task');
+            clearSelection('task');
+          }}
+          entityName="Task"
+          entityNamePlural="Tasks"
+        />
+      )}
+
+      {isHabitSelectMode && (
+        <MultiSelectToolbar
+          entityType="habit"
+          onDelete={handleHabitsDelete}
+          onEdit={(id) => {
+            exitSelectMode('habit');
+            onEdit('habit', id);
+          }}
+          onCancel={() => {
+            exitSelectMode('habit');
+            clearSelection('habit');
+          }}
+          entityName="Habit"
+          entityNamePlural="Habits"
+        />
+      )}
 
       {/* Add Task Modal */}
       {activeModal?.type === 'addTask' && (

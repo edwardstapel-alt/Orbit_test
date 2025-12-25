@@ -88,7 +88,7 @@ export const GoalPlans: React.FC<GoalPlansProps> = ({ onBack, onEdit, onNavigate
         showBack={true}
       />
 
-      <div className="flex-1 overflow-y-auto px-6 py-4 pb-24">
+      <div className="flex-1 overflow-y-auto px-6 py-4 pb-32 lg:pb-8">
         {/* Search Bar */}
         <div className="mb-6">
           <div className="relative">

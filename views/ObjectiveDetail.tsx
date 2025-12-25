@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { KeyResultStatusView } from './KeyResultStatusView';
 import { View } from '../types';
+import { useSelection } from '../context/SelectionContext';
+import { useLongPress } from '../hooks/useLongPress';
+import { MultiSelectToolbar } from '../components/MultiSelectToolbar';
 
 interface ObjectiveDetailProps {
   objectiveId: string;
@@ -12,9 +15,75 @@ interface ObjectiveDetailProps {
 }
 
 export const ObjectiveDetail: React.FC<ObjectiveDetailProps> = ({ objectiveId, onBack, onEdit, onAddKR, onNavigate }) => {
-  const { objectives, keyResults, habits, teamMembers, updateObjective, updateHabit, updateKeyResult, lifeAreas, getLifeAreaById, showCategory, formatKeyResultValue, getStatusUpdatesByKeyResult, objectiveTemplates, tasks, calculateActionPlanProgress, getRetrospectivesByObjective } = useData();
+  const { objectives, keyResults, habits, teamMembers, updateObjective, updateHabit, updateKeyResult, deleteKeyResult, deleteHabit, lifeAreas, getLifeAreaById, showCategory, formatKeyResultValue, getStatusUpdatesByKeyResult, objectiveTemplates, tasks, calculateActionPlanProgress, getRetrospectivesByObjective } = useData();
   const [activeModal, setActiveModal] = useState<'owner' | 'date' | 'category' | 'lifeArea' | 'startDate' | 'endDate' | 'timelineColor' | 'linkHabit' | 'linkKeyResult' | null>(null);
   const [selectedKeyResultId, setSelectedKeyResultId] = useState<string | null>(null);
+  
+  const {
+    isSelectMode,
+    enterSelectMode,
+    exitSelectMode,
+    toggleSelection,
+    isSelected,
+    getSelectedCount,
+    getSelectedIds,
+    clearSelection
+  } = useSelection();
+
+  const isKeyResultSelectMode = isSelectMode.get('keyResult') || false;
+  const isHabitSelectMode = isSelectMode.get('habit') || false;
+
+  const handleKeyResultsDelete = (krIds: string[]) => {
+    krIds.forEach(id => deleteKeyResult(id));
+    clearSelection('keyResult');
+    exitSelectMode('keyResult');
+  };
+
+  const handleHabitsDelete = (habitIds: string[]) => {
+    habitIds.forEach(id => deleteHabit(id));
+    clearSelection('habit');
+    exitSelectMode('habit');
+  };
+
+  const handleKeyResultClick = (krId: string) => {
+    if (isKeyResultSelectMode) {
+      toggleSelection('keyResult', krId);
+    } else {
+      setSelectedKeyResultId(krId);
+    }
+  };
+
+  const handleKeyResultLongPress = (krId: string) => {
+    if (!isKeyResultSelectMode) {
+      enterSelectMode('keyResult');
+      toggleSelection('keyResult', krId);
+    }
+  };
+
+  const handleKeyResultEdit = (krId: string) => {
+    exitSelectMode('keyResult');
+    onEdit('keyResult', krId, objectiveId);
+  };
+
+  const handleHabitClick = (habitId: string) => {
+    if (isHabitSelectMode) {
+      toggleSelection('habit', habitId);
+    } else {
+      onEdit('habit', habitId);
+    }
+  };
+
+  const handleHabitLongPress = (habitId: string) => {
+    if (!isHabitSelectMode) {
+      enterSelectMode('habit');
+      toggleSelection('habit', habitId);
+    }
+  };
+
+  const handleHabitEdit = (habitId: string) => {
+    exitSelectMode('habit');
+    onEdit('habit', habitId);
+  };
   
   const handleAddNewLifeArea = () => {
     setActiveModal(null);
@@ -311,11 +380,37 @@ export const ObjectiveDetail: React.FC<ObjectiveDetailProps> = ({ objectiveId, o
             {linkedKRs.map(kr => {
                 const percent = Math.min(Math.round((kr.current / kr.target) * 100), 100);
                 const krHabits = habits.filter(h => h.linkedKeyResultId === kr.id);
+                const krIsSelected = isSelected('keyResult', kr.id);
+
+                const krLongPressHandlers = useLongPress({
+                  onLongPress: () => handleKeyResultLongPress(kr.id),
+                  onClick: () => handleKeyResultClick(kr.id),
+                });
+
                 return (
-                    <div key={kr.id} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 group hover:shadow-md hover:border-primary/20">
-                      <div onClick={() => setSelectedKeyResultId(kr.id)} className="cursor-pointer active:scale-[0.98] transition-transform">
+                    <div key={kr.id} className={`bg-white p-4 rounded-2xl shadow-sm border-2 group hover:shadow-md transition-all ${
+                      krIsSelected 
+                        ? 'border-primary bg-primary/5' 
+                        : 'border-slate-100 hover:border-primary/20'
+                    }`}>
+                      <div {...krLongPressHandlers} className="cursor-pointer active:scale-[0.98] transition-transform">
                         <div className="flex justify-between items-start mb-2">
-                            <h4 className="text-base font-semibold text-text-main leading-snug flex-1 mr-2 group-hover:text-primary transition-colors">{kr.title}</h4>
+                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                              {isKeyResultSelectMode && (
+                                <div className="shrink-0">
+                                  <div className={`size-5 rounded-lg border-2 flex items-center justify-center transition-all ${
+                                    krIsSelected 
+                                      ? 'bg-primary border-primary' 
+                                      : 'border-gray-300 bg-white'
+                                  }`}>
+                                    {krIsSelected && (
+                                      <span className="material-symbols-outlined text-white text-xs">check</span>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                              <h4 className="text-base font-semibold text-text-main leading-snug flex-1 mr-2 group-hover:text-primary transition-colors">{kr.title}</h4>
+                            </div>
                             <span className={`shrink-0 text-[10px] font-bold uppercase px-2 py-0.5 rounded ${getStatusBadge(getEffectiveStatus(kr.status, kr.id, true))}`}>{getEffectiveStatus(kr.status, kr.id, true)}</span>
                         </div>
                         <div className="flex items-end justify-between mb-2">
@@ -340,7 +435,8 @@ export const ObjectiveDetail: React.FC<ObjectiveDetailProps> = ({ objectiveId, o
                         <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
                             <div className={`h-full rounded-full ${getStatusColor(getEffectiveStatus(kr.status, kr.id, true))}`} style={{width: `${percent}%`}}></div>
                         </div>
-                        <div className="mt-2 flex justify-end items-center">
+                        {!isKeyResultSelectMode && (
+                          <div className="mt-2 flex justify-end items-center">
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -350,7 +446,8 @@ export const ObjectiveDetail: React.FC<ObjectiveDetailProps> = ({ objectiveId, o
                             >
                               Edit →
                             </button>
-                        </div>
+                          </div>
+                        )}
                       </div>
                       
                       {/* Linked Habits */}
@@ -361,22 +458,53 @@ export const ObjectiveDetail: React.FC<ObjectiveDetailProps> = ({ objectiveId, o
                             <span className="text-[10px] font-bold text-text-tertiary uppercase tracking-wider">Linked Habits</span>
                           </div>
                           <div className="flex flex-wrap gap-2">
-                            {krHabits.map(habit => (
+                            {krHabits.map(habit => {
+                              const habitIsSelected = isSelected('habit', habit.id);
+                              const habitLongPressHandlers = useLongPress({
+                                onLongPress: () => {
+                                  if (!isHabitSelectMode) {
+                                    enterSelectMode('habit');
+                                    toggleSelection('habit', habit.id);
+                                  }
+                                },
+                                onClick: () => {
+                                  if (isHabitSelectMode) {
+                                    toggleSelection('habit', habit.id);
+                                  } else {
+                                    onEdit('habit', habit.id);
+                                  }
+                                },
+                              });
+
+                              return (
                               <div
                                 key={habit.id}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onEdit('habit', habit.id);
-                                }}
-                                className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer group"
+                                {...habitLongPressHandlers}
+                                className={`flex items-center gap-1.5 px-2 py-1 rounded-lg transition-colors cursor-pointer group ${
+                                  habitIsSelected 
+                                    ? 'bg-primary/20 border-2 border-primary' 
+                                    : 'bg-slate-50 hover:bg-slate-100'
+                                }`}
                               >
                                 <span className="material-symbols-outlined text-sm text-text-secondary group-hover:text-primary">{habit.icon}</span>
                                 <span className="text-xs font-medium text-text-secondary group-hover:text-primary">{habit.name}</span>
                                 {habit.streak > 0 && (
                                   <span className="text-[10px] text-primary font-bold">🔥{habit.streak}</span>
                                 )}
+                                {isHabitSelectMode && (
+                                  <div className={`size-4 rounded border flex items-center justify-center ${
+                                    habitIsSelected 
+                                      ? 'bg-primary border-primary' 
+                                      : 'border-gray-300 bg-white'
+                                  }`}>
+                                    {habitIsSelected && (
+                                      <span className="material-symbols-outlined text-white text-[10px]">check</span>
+                                    )}
+                                  </div>
+                                )}
                               </div>
-                            ))}
+                            );
+                            })}
                           </div>
                         </div>
                       )}
@@ -401,12 +529,36 @@ export const ObjectiveDetail: React.FC<ObjectiveDetailProps> = ({ objectiveId, o
               {linkedHabits.filter(h => h.objectiveId === objectiveId && !h.linkedKeyResultId).map(habit => {
                 const weeklyData = habit.weeklyProgress || [false, false, false, false, false, false, false];
                 const completedCount = weeklyData.filter(Boolean).length;
+                const habitIsSelected = isSelected('habit', habit.id);
+
+                const habitLongPressHandlers = useLongPress({
+                  onLongPress: () => handleHabitLongPress(habit.id),
+                  onClick: () => handleHabitClick(habit.id),
+                });
+
                 return (
                   <div
                     key={habit.id}
-                    onClick={() => onEdit('habit', habit.id)}
-                    className="bg-white rounded-xl p-3 shadow-sm border border-slate-100 flex items-center gap-3 cursor-pointer hover:shadow-md hover:border-primary/20 transition-all active:scale-[0.99]"
+                    {...habitLongPressHandlers}
+                    className={`bg-white rounded-xl p-3 shadow-sm border-2 flex items-center gap-3 cursor-pointer hover:shadow-md transition-all active:scale-[0.99] ${
+                      habitIsSelected 
+                        ? 'border-primary bg-primary/5' 
+                        : 'border-slate-100 hover:border-primary/20'
+                    }`}
                   >
+                    {isHabitSelectMode && (
+                      <div className="shrink-0">
+                        <div className={`size-6 rounded-lg border-2 flex items-center justify-center transition-all ${
+                          habitIsSelected 
+                            ? 'bg-primary border-primary' 
+                            : 'border-gray-300 bg-white'
+                        }`}>
+                          {habitIsSelected && (
+                            <span className="material-symbols-outlined text-white text-sm">check</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
                     <div className="size-10 rounded-xl bg-slate-50 flex items-center justify-center text-text-secondary shrink-0">
                       <span className="material-symbols-outlined text-[20px]">{habit.icon}</span>
                     </div>
@@ -419,7 +571,9 @@ export const ObjectiveDetail: React.FC<ObjectiveDetailProps> = ({ objectiveId, o
                         <span className="text-[10px] text-text-tertiary">{completedCount}/7 this week</span>
                       </div>
                     </div>
-                    <span className="material-symbols-outlined text-text-tertiary text-[18px]">chevron_right</span>
+                    {!isHabitSelectMode && (
+                      <span className="material-symbols-outlined text-text-tertiary text-[18px]">chevron_right</span>
+                    )}
                   </div>
                 );
               })}
@@ -1022,6 +1176,34 @@ export const ObjectiveDetail: React.FC<ObjectiveDetailProps> = ({ objectiveId, o
         </div>
       )}
 
+      {/* Multi-Select Toolbars */}
+      {isKeyResultSelectMode && (
+        <MultiSelectToolbar
+          entityType="keyResult"
+          onDelete={handleKeyResultsDelete}
+          onEdit={getSelectedCount('keyResult') === 1 ? () => handleKeyResultEdit(getSelectedIds('keyResult')[0]) : undefined}
+          onCancel={() => {
+            exitSelectMode('keyResult');
+            clearSelection('keyResult');
+          }}
+          entityName="Key Result"
+          entityNamePlural="Key Results"
+        />
+      )}
+
+      {isHabitSelectMode && (
+        <MultiSelectToolbar
+          entityType="habit"
+          onDelete={handleHabitsDelete}
+          onEdit={getSelectedCount('habit') === 1 ? () => handleHabitEdit(getSelectedIds('habit')[0]) : undefined}
+          onCancel={() => {
+            exitSelectMode('habit');
+            clearSelection('habit');
+          }}
+          entityName="Habit"
+          entityNamePlural="Habits"
+        />
+      )}
     </div>
   );
 };

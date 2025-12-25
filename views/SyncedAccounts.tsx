@@ -14,6 +14,8 @@ import {
 } from '../utils/googleSync';
 import { syncService } from '../utils/syncService';
 import { View } from '../types';
+import { loginWithGoogle, getCurrentUser, onAuthStateChange } from '../utils/firebaseAuth';
+import { syncAllFromFirebase } from '../utils/firebaseSync';
 
 declare global {
     interface Window {
@@ -49,6 +51,7 @@ export const SyncedAccounts: React.FC<SyncedAccountsProps> = ({ onBack, onNaviga
     stopAutoImport
   } = useData();
   const [googleConnected, setGoogleConnected] = useState(false);
+  const [isFirebaseLoggedIn, setIsFirebaseLoggedIn] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [clientId, setClientId] = useState('388457113122-gb1safn47js2k3rbpb2tsue52n960rsh.apps.googleusercontent.com');
   const [syncStatus, setSyncStatus] = useState<string>('');
@@ -73,6 +76,22 @@ export const SyncedAccounts: React.FC<SyncedAccountsProps> = ({ onBack, onNaviga
     if(localStorage.getItem('orbit_google_sync') === 'true') {
         setGoogleConnected(true);
     }
+    
+    // Check Firebase auth status
+    const checkFirebaseAuth = () => {
+      const user = getCurrentUser();
+      setIsFirebaseLoggedIn(!!user);
+    };
+    checkFirebaseAuth();
+    
+    // Watch for Firebase auth changes
+    const unsubscribe = onAuthStateChange((user) => {
+      setIsFirebaseLoggedIn(!!user);
+    });
+    
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
     
     // Load saved client id or use default
     const savedId = localStorage.getItem('orbit_google_client_id');
@@ -182,7 +201,7 @@ export const SyncedAccounts: React.FC<SyncedAccountsProps> = ({ onBack, onNaviga
         const client = window.google.accounts.oauth2.initTokenClient({
             client_id: cleanClientId,
             scope: SCOPES,
-            callback: (tokenResponse: any) => {
+            callback: async (tokenResponse: any) => {
                 if (tokenResponse && tokenResponse.access_token) {
                     setGoogleConnected(true);
                     localStorage.setItem('orbit_google_sync', 'true');
@@ -192,6 +211,41 @@ export const SyncedAccounts: React.FC<SyncedAccountsProps> = ({ onBack, onNaviga
                         const expiryTime = Date.now() + (tokenResponse.expires_in * 1000);
                         localStorage.setItem('orbit_google_token_expiry', expiryTime.toString());
                     }
+                    
+                    // Automatically login to Firebase with Google
+                    try {
+                      console.log('🔐 Attempting Firebase Google login...');
+                      const firebaseResult = await loginWithGoogle();
+                      
+                      if (firebaseResult.success && firebaseResult.user) {
+                        console.log('✅ Firebase Google login successful:', firebaseResult.user.email);
+                        setIsFirebaseLoggedIn(true);
+                        
+                        // Sync data from Firebase
+                        try {
+                          console.log('🔄 Starting Firebase sync after Google login...');
+                          const syncResult = await syncAllFromFirebase();
+                          if (syncResult.success) {
+                            console.log('✅ Firebase sync successful after login');
+                            setSyncStatus('Firebase sync completed');
+                          } else {
+                            console.warn('⚠️ Firebase sync failed after login:', syncResult.error);
+                            setSyncStatus('Firebase sync had issues');
+                          }
+                        } catch (syncError: any) {
+                          console.error('❌ Firebase sync error after login:', syncError);
+                          setSyncStatus('Firebase sync error');
+                        }
+                      } else {
+                        console.warn('⚠️ Firebase Google login failed:', firebaseResult.error);
+                        // Continue with Google Services sync even if Firebase login fails
+                      }
+                    } catch (firebaseError: any) {
+                      console.error('❌ Firebase login exception:', firebaseError);
+                      // Continue with Google Services sync even if Firebase login fails
+                    }
+                    
+                    // Fetch Google Services data (Calendar, Tasks, Contacts)
                     fetchData(tokenResponse.access_token);
                 } else if (tokenResponse && tokenResponse.error) {
                     alert(`Authenticatiefout: ${tokenResponse.error}. Controleer of de Client ID correct is en de origin URL is toegevoegd aan Authorized JavaScript origins.`);
@@ -402,100 +456,150 @@ export const SyncedAccounts: React.FC<SyncedAccountsProps> = ({ onBack, onNaviga
         <h1 className="text-xl font-bold text-text-main">Synced Accounts</h1>
       </header>
 
-      <div className="p-6 space-y-6 overflow-y-auto pb-24">
+      <div className="p-6 space-y-6 overflow-y-auto pb-32 lg:pb-8">
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col items-center gap-4">
              <div className="size-16 rounded-full bg-white border-2 border-slate-100 flex items-center justify-center p-3 shadow-sm">
                  <img src="https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg" alt="Google" className="w-full" />
              </div>
              <div className="text-center">
                  <h2 className="text-lg font-bold text-text-main">Google Account</h2>
-                 <p className="text-sm text-text-secondary">Synchroniseer je profiel, kalender en taken.</p>
+                 <p className="text-sm text-text-secondary">Log in met Google om je data te synchroniseren.</p>
+                 {(googleConnected || isFirebaseLoggedIn) && (
+                   <div className="mt-3 space-y-1">
+                     {isFirebaseLoggedIn && (
+                       <div className="text-xs text-green-600 flex items-center justify-center gap-1">
+                         <span className="material-symbols-outlined text-xs">check_circle</span>
+                         Cloud Sync actief
+                       </div>
+                     )}
+                     {googleConnected && (
+                       <div className="text-xs text-green-600 flex items-center justify-center gap-1">
+                         <span className="material-symbols-outlined text-xs">check_circle</span>
+                         Google Services verbonden
+                       </div>
+                     )}
+                   </div>
+                 )}
              </div>
              
-             {!googleConnected ? (
+             {!googleConnected && !isFirebaseLoggedIn ? (
                  <div className="w-full space-y-4">
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest ml-1">Client ID</label>
-                        <input 
-                            type="text" 
-                            placeholder="Voer OAuth 2.0 Client ID in" 
-                            className="w-full p-3 text-xs bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-primary transition-colors"
-                            value={clientId}
-                            onChange={(e) => setClientId(e.target.value)}
-                        />
-                    </div>
-
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 mb-2">
-                        <p className="text-[10px] font-bold text-yellow-800 mb-1">⚠️ Huidige Origin URL:</p>
-                        <div className="flex items-center gap-2 bg-white/50 p-2 rounded border border-yellow-300">
-                            <code className="flex-1 truncate font-mono text-[10px] font-bold">{currentOrigin}</code>
-                            <button onClick={copyOrigin} className="text-yellow-700 font-bold uppercase text-[9px] px-2 py-1 bg-yellow-100 rounded hover:bg-yellow-200">
-                                Kopieer
-                            </button>
-                        </div>
-                        <p className="text-[9px] text-yellow-700 mt-1">Voeg deze exacte URL toe aan "Authorized JavaScript origins" in Google Cloud Console</p>
-                    </div>
+                    {/* Simplified: Direct Google login button */}
+                    <button 
+                        onClick={handleAuthClick} 
+                        disabled={!googleApiLoaded || isLoading}
+                        className="w-full py-4 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-colors shadow-lg shadow-blue-200 flex items-center justify-center gap-3 text-base"
+                    >
+                        {isLoading ? (
+                          <>
+                            <span className="material-symbols-outlined animate-spin">sync</span>
+                            Verbinden...
+                          </>
+                        ) : !googleApiLoaded ? (
+                          <>
+                            <span className="material-symbols-outlined animate-pulse">hourglass_empty</span>
+                            API laden...
+                          </>
+                        ) : (
+                          <>
+                            <img src="https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg" alt="Google" className="w-5 h-5" />
+                            Inloggen met Google
+                          </>
+                        )}
+                    </button>
+                    
+                    {/* Advanced options (collapsed by default) */}
                     <button 
                         onClick={() => setShowHelp(!showHelp)}
-                        className="w-full py-2 text-xs text-primary font-medium flex items-center justify-center gap-1 hover:bg-primary/5 rounded-lg transition-colors"
+                        className="w-full py-2 text-xs text-text-tertiary font-medium flex items-center justify-center gap-1 hover:bg-gray-50 rounded-lg transition-colors"
                     >
-                        <span className="material-symbols-outlined text-[16px]">help</span>
-                        {showHelp ? 'Instructies verbergen' : 'Hoe los ik Error 400 op?'}
+                        <span className="material-symbols-outlined text-[16px]">settings</span>
+                        {showHelp ? 'Geavanceerde opties verbergen' : 'Geavanceerde opties'}
                     </button>
 
                     {showHelp && (
-                        <div className="bg-blue-50 p-4 rounded-xl text-xs text-blue-800 space-y-2 leading-relaxed border border-blue-100">
-                            <p className="font-bold mb-2">Stap-voor-stap handleiding:</p>
-                            <ol className="list-decimal pl-4 space-y-2 mb-3">
-                                <li>Ga naar <a href="https://console.cloud.google.com/apis/credentials" target="_blank" className="underline font-bold">Google Cloud Console</a>.</li>
-                                <li>Klik op je OAuth 2.0 Client ID: <code className="bg-white/50 px-1 rounded text-[10px]">388457113122-gb1safn47js2k3rbpb2tsue52n960rsh</code></li>
-                                <li>
-                                    <strong className="text-red-600">KRITIEK:</strong> Voeg deze exacte URL toe aan <strong>"Authorized JavaScript origins"</strong>:
-                                    <div className="flex items-center gap-2 mt-1 bg-white/50 p-2 rounded border-2 border-red-300">
-                                        <code className="flex-1 truncate font-mono text-[10px] font-bold">{currentOrigin}</code>
-                                        <button onClick={copyOrigin} className="text-blue-600 font-bold uppercase text-[9px] px-2 py-1 bg-blue-100 rounded">Kopieer</button>
-                                    </div>
-                                    <span className="text-[10px] text-red-600 font-bold block mt-1">⚠️ Let op: Voeg GEEN trailing slash (/) toe. Bijvoorbeeld: http://localhost:3000 (NIET http://localhost:3000/)</span>
-                                </li>
-                                <li>
-                                    <strong className="text-red-600">BELANGRIJK:</strong> Laat <strong>"Authorized redirect URIs"</strong> LEEG of verwijder alle entries daar. 
-                                    <span className="text-[10px] block mt-1 text-red-600">Redirect URIs zijn alleen voor server-side apps. Deze app gebruikt client-side flow.</span>
-                                </li>
-                                <li>Klik op <strong>"SAVE"</strong> en wacht 5-10 minuten.</li>
-                                <li>Zorg dat de volgende APIs zijn ingeschakeld: <strong>People API</strong>, <strong>Calendar API</strong>, en <strong>Tasks API</strong>.</li>
-                            </ol>
-                            <div className="bg-red-50 p-3 rounded border-2 border-red-200 mt-2">
-                                <p className="font-bold text-[10px] uppercase mb-1 text-red-700">Error 400: redirect_uri_mismatch?</p>
-                                <ul className="list-disc pl-3 text-[10px] space-y-1 text-red-700">
-                                    <li><strong>Verwijder ALLES</strong> uit "Authorized redirect URIs" - dit veld moet leeg zijn!</li>
-                                    <li>Voeg <code className="bg-white/50 px-1 rounded">{currentOrigin}</code> toe aan <strong>"Authorized JavaScript origins"</strong> (zonder trailing slash)</li>
-                                    <li>Als je in "Testing" modus bent, voeg je email toe aan <strong>Test Users</strong> in OAuth Consent Screen.</li>
-                                    <li>Wacht 5-10 minuten na het opslaan - Google's cache heeft tijd nodig.</li>
-                                    <li>Ververs de pagina na het opslaan van wijzigingen.</li>
-                                </ul>
+                        <div className="space-y-4 animate-fade-in">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-bold text-text-tertiary uppercase tracking-widest ml-1">Client ID (optioneel)</label>
+                                <input 
+                                    type="text" 
+                                    placeholder="Laat leeg voor standaard Client ID" 
+                                    className="w-full p-3 text-xs bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-primary transition-colors"
+                                    value={clientId}
+                                    onChange={(e) => setClientId(e.target.value)}
+                                />
                             </div>
+
+                            <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3">
+                                <p className="text-[10px] font-bold text-yellow-800 mb-1">⚠️ Huidige Origin URL:</p>
+                                <div className="flex items-center gap-2 bg-white/50 p-2 rounded border border-yellow-300">
+                                    <code className="flex-1 truncate font-mono text-[10px] font-bold">{currentOrigin}</code>
+                                    <button onClick={copyOrigin} className="text-yellow-700 font-bold uppercase text-[9px] px-2 py-1 bg-yellow-100 rounded hover:bg-yellow-200">
+                                        Kopieer
+                                    </button>
+                                </div>
+                                <p className="text-[9px] text-yellow-700 mt-1">Voeg deze exacte URL toe aan "Authorized JavaScript origins" in Google Cloud Console</p>
+                            </div>
+                            
+                            <div className="bg-blue-50 p-4 rounded-xl text-xs text-blue-800 space-y-2 leading-relaxed border border-blue-100">
+                                <p className="font-bold mb-2">Stap-voor-stap handleiding:</p>
+                                <ol className="list-decimal pl-4 space-y-2 mb-3">
+                                    <li>Ga naar <a href="https://console.cloud.google.com/apis/credentials" target="_blank" className="underline font-bold">Google Cloud Console</a>.</li>
+                                    <li>Klik op je OAuth 2.0 Client ID: <code className="bg-white/50 px-1 rounded text-[10px]">388457113122-gb1safn47js2k3rbpb2tsue52n960rsh</code></li>
+                                    <li>
+                                        <strong className="text-red-600">KRITIEK:</strong> Voeg deze exacte URL toe aan <strong>"Authorized JavaScript origins"</strong>:
+                                        <div className="flex items-center gap-2 mt-1 bg-white/50 p-2 rounded border-2 border-red-300">
+                                            <code className="flex-1 truncate font-mono text-[10px] font-bold">{currentOrigin}</code>
+                                            <button onClick={copyOrigin} className="text-blue-600 font-bold uppercase text-[9px] px-2 py-1 bg-blue-100 rounded">Kopieer</button>
+                                        </div>
+                                        <span className="text-[10px] text-red-600 font-bold block mt-1">⚠️ Let op: Voeg GEEN trailing slash (/) toe. Bijvoorbeeld: http://localhost:3000 (NIET http://localhost:3000/)</span>
+                                    </li>
+                                    <li>
+                                        <strong className="text-red-600">BELANGRIJK:</strong> Laat <strong>"Authorized redirect URIs"</strong> LEEG of verwijder alle entries daar. 
+                                        <span className="text-[10px] block mt-1 text-red-600">Redirect URIs zijn alleen voor server-side apps. Deze app gebruikt client-side flow.</span>
+                                    </li>
+                                    <li>Klik op <strong>"SAVE"</strong> en wacht 5-10 minuten.</li>
+                                    <li>Zorg dat de volgende APIs zijn ingeschakeld: <strong>People API</strong>, <strong>Calendar API</strong>, en <strong>Tasks API</strong>.</li>
+                                </ol>
+                                <div className="bg-red-50 p-3 rounded border-2 border-red-200 mt-2">
+                                    <p className="font-bold text-[10px] uppercase mb-1 text-red-700">Error 400: redirect_uri_mismatch?</p>
+                                    <ul className="list-disc pl-3 text-[10px] space-y-1 text-red-700">
+                                        <li><strong>Verwijder ALLES</strong> uit "Authorized redirect URIs" - dit veld moet leeg zijn!</li>
+                                        <li>Voeg <code className="bg-white/50 px-1 rounded">{currentOrigin}</code> toe aan <strong>"Authorized JavaScript origins"</strong> (zonder trailing slash)</li>
+                                        <li>Als je in "Testing" modus bent, voeg je email toe aan <strong>Test Users</strong> in OAuth Consent Screen.</li>
+                                        <li>Wacht 5-10 minuten na het opslaan - Google's cache heeft tijd nodig.</li>
+                                        <li>Ververs de pagina na het opslaan van wijzigingen.</li>
+                                    </ul>
+                                </div>
+                            </div>
+                            
+                            <button onClick={simulateSync} className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-text-main font-bold rounded-xl transition-colors">
+                                Demo Modus (zonder Google login)
+                            </button>
                         </div>
                     )}
-
-                    <div className="flex gap-2">
-                        <button onClick={simulateSync} className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 text-text-main font-bold rounded-xl transition-colors">
-                            Demo Modus
-                        </button>
-                        <button 
-                            onClick={handleAuthClick} 
-                            disabled={!googleApiLoaded || isLoading}
-                            className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-colors shadow-lg shadow-blue-200 flex items-center justify-center gap-2"
-                        >
-                            {isLoading ? 'Laden...' : !googleApiLoaded ? 'API laden...' : 'Verbinden'}
-                        </button>
-                    </div>
                  </div>
              ) : (
                  <div className="w-full">
-                     <div className="bg-green-50 text-green-700 text-xs font-bold text-center py-2 rounded-lg mb-3 border border-green-100 flex items-center justify-center gap-2">
-                        {isLoading ? <span className="material-symbols-outlined animate-spin text-[16px]">progress_activity</span> : <span className="material-symbols-outlined text-[16px]">check_circle</span>}
-                        {isLoading ? syncStatus : 'Succesvol gesynchroniseerd'}
+                     <div className="space-y-2 mb-3">
+                       {isFirebaseLoggedIn && (
+                         <div className="bg-green-50 text-green-700 text-xs font-bold text-center py-2 rounded-lg border border-green-100 flex items-center justify-center gap-2">
+                           <span className="material-symbols-outlined text-[16px]">check_circle</span>
+                           Cloud Sync actief
+                         </div>
+                       )}
+                       {googleConnected && (
+                         <div className="bg-green-50 text-green-700 text-xs font-bold text-center py-2 rounded-lg border border-green-100 flex items-center justify-center gap-2">
+                           {isLoading ? <span className="material-symbols-outlined animate-spin text-[16px]">progress_activity</span> : <span className="material-symbols-outlined text-[16px]">check_circle</span>}
+                           {isLoading ? syncStatus : 'Google Services verbonden'}
+                         </div>
+                       )}
                      </div>
+                     {syncStatus && syncStatus !== 'Succesvol gesynchroniseerd' && (
+                       <div className="bg-blue-50 text-blue-700 text-xs text-center py-2 rounded-lg mb-3 border border-blue-100">
+                         <p className="text-[10px]">{syncStatus}</p>
+                       </div>
+                     )}
                      <div className="bg-blue-50 text-blue-700 text-xs text-center py-2 rounded-lg mb-3 border border-blue-100">
                         <p className="font-semibold mb-1">💡 Tip:</p>
                         <p className="text-[10px]">Als email of verjaardag niet wordt gesynchroniseerd, koppel het account los en verbind opnieuw om de nieuwe permissies te geven.</p>

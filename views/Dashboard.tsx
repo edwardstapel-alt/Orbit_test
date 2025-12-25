@@ -4,6 +4,7 @@ import { useData } from '../context/DataContext';
 import { TopNav } from '../components/TopNav';
 import { QuickActionsPanel } from '../components/QuickActionsPanel';
 import { KeyResultStatusView } from './KeyResultStatusView';
+import { SwipeableTask } from '../components/SwipeableTask';
 
 interface DashboardProps {
   onNavigate: (view: View, habitId?: string, lifeAreaId?: string) => void;
@@ -134,7 +135,7 @@ const ObjectiveCard: React.FC<{
 
 export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onViewObjective, onViewLifeArea, onMenuClick, onProfileClick }) => {
   const [mode, setMode] = useState<'personal' | 'professional'>('professional');
-  const { tasks, habits, objectives, keyResults, lifeAreas, updateTask, deleteTask, deleteCompletedTasks, userProfile, showCategory, quickActions, reviews, getLatestReview } = useData();
+  const { tasks, habits, objectives, keyResults, lifeAreas, updateTask, deleteTask, archiveTask, deleteCompletedTasks, userProfile, showCategory, quickActions, reviews, getLatestReview } = useData();
   const [removingTasks, setRemovingTasks] = useState<Set<string>>(new Set());
   const [showAddObjectiveModal, setShowAddObjectiveModal] = useState(false);
   const [selectedKeyResultId, setSelectedKeyResultId] = useState<string | null>(null);
@@ -408,31 +409,52 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onEdit, onView
                 {filteredTasks.map((item) => {
                   const isRemoving = removingTasks.has(item.id);
                   return (
-                <div 
-                  key={item.id} 
-                  className={`group flex items-center gap-4 p-5 lg:border-0 border-b border-gray-100 last:border-0 hover:bg-gray-50/50 cursor-pointer select-none ${
-                    isRemoving 
-                      ? 'animate-slide-out-left pointer-events-none overflow-hidden' 
-                      : ''
-                  }`}
+                <SwipeableTask
+                  key={item.id}
+                  task={item}
+                  onDelete={() => {
+                    setRemovingTasks(prev => new Set(prev).add(item.id));
+                    setTimeout(() => {
+                      deleteTask(item.id);
+                      setRemovingTasks(prev => {
+                        const next = new Set(prev);
+                        next.delete(item.id);
+                        return next;
+                      });
+                    }, 300);
+                  }}
+                  onArchive={() => {
+                    archiveTask(item.id);
+                  }}
+                  onToggle={() => toggleTask(item.id)}
+                  onEdit={() => onEdit('task', item.id)}
+                  isRemoving={isRemoving}
                 >
-                    <div className="relative flex items-center shrink-0" onClick={() => toggleTask(item.id)}>
-                    <input 
-                        type="checkbox" 
-                        checked={item.completed}
-                        readOnly
-                        className="peer h-6 w-6 cursor-pointer appearance-none rounded-full border-2 border-gray-300 bg-transparent checked:border-primary checked:bg-primary transition-all hover:border-primary/50 focus:ring-0 focus:ring-offset-0" 
-                    />
-                    <span className="material-symbols-outlined absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white opacity-0 peer-checked:opacity-100 text-[14px] font-bold pointer-events-none transition-opacity">check</span>
-                    </div>
-                    <div className="flex flex-col flex-1 min-w-0" onClick={() => onEdit('task', item.id)}>
-                    <span className={`text-text-main text-[15px] font-medium leading-tight truncate transition-all ${item.completed ? 'line-through text-text-tertiary' : ''}`}>{item.title}</span>
-                    <div className="flex items-center gap-2 mt-1">
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold uppercase ${item.priority ? 'bg-primary-light text-primary' : 'bg-gray-100 text-text-secondary'}`}>{item.tag}</span>
-                        <span className={`text-xs ${item.priority ? 'text-text-secondary font-medium' : 'text-text-tertiary'}`}>{item.time}</span>
-                    </div>
-                    </div>
-                </div>
+                  <div 
+                    className={`group flex items-center gap-4 p-5 lg:border-0 border-b border-gray-100 last:border-0 hover:bg-gray-50/50 cursor-pointer select-none ${
+                      isRemoving 
+                        ? 'animate-slide-out-left pointer-events-none overflow-hidden' 
+                        : ''
+                    }`}
+                  >
+                      <div className="relative flex items-center shrink-0" onClick={(e) => { e.stopPropagation(); toggleTask(item.id); }}>
+                      <input 
+                          type="checkbox" 
+                          checked={item.completed}
+                          readOnly
+                          className="peer h-6 w-6 cursor-pointer appearance-none rounded-full border-2 border-gray-300 bg-transparent checked:border-primary checked:bg-primary transition-all hover:border-primary/50 focus:ring-0 focus:ring-offset-0" 
+                      />
+                      <span className="material-symbols-outlined absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white opacity-0 peer-checked:opacity-100 text-[14px] font-bold pointer-events-none transition-opacity">check</span>
+                      </div>
+                      <div className="flex flex-col flex-1 min-w-0">
+                      <span className={`text-text-main text-[15px] font-medium leading-tight truncate transition-all ${item.completed ? 'line-through text-text-tertiary' : ''}`}>{item.title}</span>
+                      <div className="flex items-center gap-2 mt-1">
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold uppercase ${item.priority ? 'bg-primary-light text-primary' : 'bg-gray-100 text-text-secondary'}`}>{item.tag}</span>
+                          <span className={`text-xs ${item.priority ? 'text-text-secondary font-medium' : 'text-text-tertiary'}`}>{item.time}</span>
+                      </div>
+                      </div>
+                  </div>
+                </SwipeableTask>
                 );
                 })}
             </div>

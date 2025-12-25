@@ -194,12 +194,31 @@ export const DataManagement: React.FC<DataManagementProps> = ({ onBack }) => {
         console.log(`Imported ${imported} key results${skipped > 0 ? `, skipped ${skipped}` : ''}`);
       }
 
+      // Set current timestamp for imported items to ensure they're considered "new" during merge
+      const importTimestamp = new Date().toISOString();
+      
       if (data.tasks && Array.isArray(data.tasks)) {
-        data.tasks.forEach((item: any) => addTask(item));
+        data.tasks.forEach((item: any) => {
+          // Ensure imported tasks have updatedAt timestamp so they're considered "new"
+          const taskWithTimestamp = {
+            ...item,
+            updatedAt: importTimestamp,
+            createdAt: item.createdAt || importTimestamp
+          };
+          addTask(taskWithTimestamp);
+        });
       }
 
       if (data.habits && Array.isArray(data.habits)) {
-        data.habits.forEach((item: any) => addHabit(item));
+        data.habits.forEach((item: any) => {
+          // Ensure imported habits have updatedAt timestamp
+          const habitWithTimestamp = {
+            ...item,
+            updatedAt: importTimestamp,
+            createdAt: item.createdAt || importTimestamp
+          };
+          addHabit(habitWithTimestamp);
+        });
       }
 
       if (data.timeSlots && Array.isArray(data.timeSlots)) {
